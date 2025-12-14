@@ -123,21 +123,41 @@ async function authLogin(){
   }
 }
 
-async function authReset(){
-  $("reset_msg").textContent = "";
-  showLoading(true, "Sending reset email…");
-  try{
-    const email = val("reset_email");
-    if(!email) throw new Error("Enter email.");
-    await api("auth.reset", { email });
-    $("reset_msg").textContent = "If that account exists, a reset email was sent.";
-    toast("Reset sent");
-  }catch(e){
-    $("reset_msg").textContent = e.message;
-  }finally{
-    showLoading(false);
+function authReset_(payload) {
+  const email = normEmail_(payload.email);
+  if (!email) throw new Error("Enter email.");
+
+  const user = findRowByKey_(tab_("Users"), "email", email);
+  // Always respond success to avoid account enumeration
+  if (!user) return { ok:true, method:"none" };
+
+  const reset_token = "rst_" + Utilities.getUuid().replace(/-/g,"");
+  const expires = new Date(Date.now() + 30*60*1000);
+
+  appendRow_(tab_("ResetTokens"), {
+    reset_token,
+    email,
+    expires_at: expires.toISOString(),
+    created_at: nowIso_(),
+    used_at: ""
+  });
+
+  const resetLink = ScriptApp.getService().getUrl() + "?reset=" + encodeURIComponent(reset_token);
+
+  // Try to email; if blocked, return the link to the UI so YOU can copy it.
+  try {
+    MailApp.sendEmail({
+      to: email,
+      subject: "JHC Assist password reset",
+      htmlBody: `Click to reset your password:<br><a href="${resetLink}">${resetLink}</a><br><br>If you didn’t request this, ignore it.`
+    });
+    return { ok:true, method:"email" };
+  } catch (e) {
+    // No permission: return reset link to the caller (admin/dev use)
+    return { ok:true, method:"manual", resetLink };
   }
 }
+
 
 /***********************
  * Logout / clear
