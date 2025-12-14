@@ -5,7 +5,12 @@
 (() => {
   'use strict';
 
-  const API_URL = (window.GAS_WEBAPP_URL || '').trim();
+  const API_URL = "https://script.google.com/macros/s/AKfycbzBPYjBlzVYNEndJ12Cy4rf1P61epLUwnsdi8zQ7GIXPwVFq60o9MJ-ClqsWZQpKCug/exec";
+
+if (!API_URL || !API_URL.startsWith("https://script.google.com/macros/s/")) {
+  alert("FATAL: GAS API URL is missing or invalid.");
+  throw new Error("Missing or invalid GAS API URL");
+}
 
   const $ = (id) => document.getElementById(id);
   const q = (sel, root=document) => root.querySelector(sel);
