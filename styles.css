@@ -1,3 +1,4 @@
+body{outline:12px solid hotpink !important;}
 :root{
   --bg0:#070A12;
   --bg1:#0b1020;
@@ -452,3 +453,4 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
     background-color: #0b1020 !important;
   }
 }
+
