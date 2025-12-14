@@ -1,5 +1,5 @@
 /**************** CONFIG ****************/
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyB4RXdMj1nRt9ziKzCZTE5YXxyWLBhnRva9MKjzPXFyYjYqr-bxhkwYrmha9gMn_ca/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxg5i_x1rnU2CI6eYNimH43vnygqHsjhvaR2UM1AI03f2s2MVTdvNn-p8yBPM1XVGSP/exec";
 
 /**************** STATE ****************/
 const state = {
@@ -13,7 +13,6 @@ const state = {
   adminPatientTimer: null,
 };
 
-document.getElementById("api_hint").textContent = GAS_URL;
 
 /**************** HELPERS ****************/
 const $ = (id) => document.getElementById(id);
@@ -487,4 +486,3 @@ function escJs(s){
 
 /**************** START ****************/
 boot();
-
