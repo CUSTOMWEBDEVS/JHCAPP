@@ -1,83 +1,77 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>JHC Assist</title>
-  <link rel="stylesheet" href="styles.css" />
-  <meta name="color-scheme" content="dark light">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>JHC HH Doc + Safety</title>
+  <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-  <div id="loading" class="loading" style="display:none;">
-    <div class="spinner"></div>
-    <div class="loadingText">Loading…</div>
-  </div>
-
-  <!-- AUTH VIEW -->
-  <div id="view_auth" class="authWrap">
-    <div class="authCard">
+  <!-- LOGIN / SIGNUP LANDING -->
+  <div id="auth_overlay" class="overlay">
+    <div class="auth_card">
       <div class="brand">
         <div class="logo">JHC</div>
         <div>
-          <div class="title">JHC Assist</div>
-          <div class="sub">Secure home health documentation + safety</div>
+          <div class="brand_title">HH Doc + Safety</div>
+          <div class="brand_sub">Secure documentation + safety workflow</div>
         </div>
       </div>
 
       <div class="tabs">
-        <button class="tabBtn active" id="tab_login" onclick="uiAuthTab('login')">Login</button>
-        <button class="tabBtn" id="tab_signup" onclick="uiAuthTab('signup')">Sign up</button>
-        <button class="tabBtn" id="tab_reset" onclick="uiAuthTab('reset')">Reset</button>
+        <button id="tab_login" class="tab active" onclick="uiSetAuthTab('login')">Login</button>
+        <button id="tab_signup" class="tab" onclick="uiSetAuthTab('signup')">Sign up</button>
+        <button id="tab_reset" class="tab" onclick="uiSetAuthTab('reset')">Reset</button>
       </div>
 
-      <div id="auth_login" class="tabPane">
+      <div id="auth_login" class="auth_panel">
         <label>Email</label>
-        <input id="login_email" type="email" placeholder="you@company.com" autocomplete="username">
+        <input id="login_email" type="email" autocomplete="username" placeholder="name@email.com">
         <label>Password</label>
-        <input id="login_password" type="password" placeholder="••••••••" autocomplete="current-password">
+        <input id="login_pass" type="password" autocomplete="current-password" placeholder="••••••••">
         <button class="btn primary" onclick="authLogin()">Login</button>
         <div id="login_msg" class="msg"></div>
       </div>
 
-      <div id="auth_signup" class="tabPane" style="display:none;">
-        <div class="note">
-          New accounts are created as <b>clinician</b>. A supervisor/admin can elevate roles in Admin panel.
-        </div>
+      <div id="auth_signup" class="auth_panel hidden">
         <label>Email</label>
-        <input id="signup_email" type="email" placeholder="you@company.com" autocomplete="username">
-        <label>Password</label>
-        <input id="signup_password" type="password" placeholder="Create a password" autocomplete="new-password">
+        <input id="signup_email" type="email" autocomplete="username" placeholder="name@email.com">
+        <label>Password (min 8 chars)</label>
+        <input id="signup_pass" type="password" autocomplete="new-password" placeholder="••••••••">
         <button class="btn primary" onclick="authSignup()">Create account</button>
         <div id="signup_msg" class="msg"></div>
       </div>
 
-      <div id="auth_reset" class="tabPane" style="display:none;">
+      <div id="auth_reset" class="auth_panel hidden">
         <label>Email</label>
-        <input id="reset_email" type="email" placeholder="you@company.com">
-        <button class="btn" onclick="authReset()">Send reset link</button>
-        <div class="note">
-          You’ll receive a reset link by email (if the account exists).
-        </div>
+        <input id="reset_email" type="email" placeholder="name@email.com">
+        <button class="btn" onclick="authReset()">Send reset</button>
         <div id="reset_msg" class="msg"></div>
+
+        <div class="hr"></div>
+        <label>Reset token</label>
+        <input id="reset_token" placeholder="rst_...">
+        <label>New password</label>
+        <input id="reset_newpass" type="password" placeholder="••••••••">
+        <button class="btn primary" onclick="authResetConfirm()">Set new password</button>
+        <div id="reset2_msg" class="msg"></div>
       </div>
 
-      <div class="foot">
-        <span class="muted">Secure by design. Don’t use shared devices.</span>
-      </div>
+      <div class="footnote" id="api_label"></div>
     </div>
   </div>
 
-  <!-- APP VIEW -->
-  <div id="view_app" class="appWrap" style="display:none;">
+  <!-- APP SHELL -->
+  <div id="app_shell" class="app hidden">
     <header class="topbar">
       <div class="left">
-        <div class="logoSm">JHC</div>
-        <div class="who">
-          <div class="whoLine">
-            <span id="me_email"></span>
-            <span class="pill" id="me_role"></span>
+        <div class="logo_small">JHC</div>
+        <div class="me">
+          <div id="me_email" class="me_email">—</div>
+          <div class="me_meta">
+            <span id="me_role" class="pill">—</span>
+            <span id="idle_state" class="pill subtle">Idle</span>
           </div>
-          <div class="muted" id="statusLine">Idle</div>
         </div>
       </div>
       <div class="right">
@@ -87,354 +81,199 @@
     </header>
 
     <div class="layout">
-      <nav class="sidebar">
-        <button class="navBtn active" id="nav_dash" onclick="navTo('dash')">Dashboard</button>
-        <button class="navBtn" id="nav_patients" onclick="navTo('patients')">Patients</button>
-        <button class="navBtn" id="nav_visits" onclick="navTo('visits')">Visits & Notes</button>
-        <button class="navBtn" id="nav_calendar" onclick="navTo('calendar')">Calendar</button>
-        <button class="navBtn" id="nav_admin" style="display:none;" onclick="navTo('admin')">Admin</button>
-      </nav>
+      <aside class="sidebar">
+        <button class="nav active" id="nav_visits" onclick="showPage('visits')">Visits & Notes</button>
+        <button class="nav" id="nav_patients" onclick="showPage('patients')">Patients</button>
+        <button class="nav" id="nav_calendar" onclick="showPage('calendar')">Calendar</button>
+        <button class="nav hidden" id="nav_admin" onclick="showPage('admin')">Admin</button>
 
-      <main class="content">
-        <!-- DASH -->
-        <section id="page_dash" class="page">
+        <div class="sidebar_note">Autosave after 1s idle while typing.</div>
+      </aside>
+
+      <main class="main">
+        <!-- VISITS -->
+        <section id="page_visits" class="page">
+          <div class="page_head">
+            <div>
+              <div class="h1">Visits</div>
+              <div class="sub">Click a visit to load SOC checklist + render note.</div>
+            </div>
+            <div class="actions">
+              <button class="btn" onclick="bootstrap()">Refresh</button>
+            </div>
+          </div>
+
           <div class="grid2">
             <div class="card">
-              <div class="cardTitle">Quick start</div>
-              <div class="cardBody">
-                <ol class="steps">
-                  <li>Go to <b>Patients</b> → add/select a patient.</li>
-                  <li>Go to <b>Visits & Notes</b> → create a visit.</li>
-                  <li>Fill fields + checklist → <b>Generate</b> (exact agency template).</li>
-                  <li>Optional: <b>Record audio</b> and upload.</li>
-                  <li><b>Sign & Lock</b> when done.</li>
-                </ol>
+              <div class="card_title">Recent visits</div>
+              <div id="visits_list" class="list"></div>
+
+              <div class="hr"></div>
+
+              <div class="card_title">Create visit</div>
+              <div class="form_row">
+                <div>
+                  <label>Patient</label>
+                  <select id="visit_patient"></select>
+                </div>
+                <div>
+                  <label>Visit type</label>
+                  <select id="visit_type">
+                    <option value="SOC">SOC</option>
+                  </select>
+                </div>
               </div>
+
+              <div class="form_row">
+                <div>
+                  <label>Scheduled start</label>
+                  <input id="visit_start" type="datetime-local">
+                </div>
+                <div>
+                  <label>Scheduled end</label>
+                  <input id="visit_end" type="datetime-local">
+                </div>
+              </div>
+
+              <div class="form_row">
+                <div>
+                  <label>Share address to team calendar</label>
+                  <select id="visit_share">
+                    <option value="Y">Yes</option>
+                    <option value="N">No</option>
+                  </select>
+                </div>
+                <div class="align_end">
+                  <button class="btn primary" onclick="createVisit()">Create</button>
+                </div>
+              </div>
+              <div class="msg" id="visit_create_msg"></div>
             </div>
 
             <div class="card">
-              <div class="cardTitle">Recent visits</div>
-              <div class="cardBody" id="dash_recent"></div>
+              <div class="card_title">Documentation (SOC)</div>
+
+              <div class="form_row">
+                <div>
+                  <label>Active visit ID</label>
+                  <input id="active_visit_id" placeholder="Click Open on a visit">
+                </div>
+                <div class="align_end right_actions">
+                  <button class="btn" onclick="socLoad()">Load</button>
+                  <button class="btn" onclick="socSave()">Save</button>
+                  <button class="btn primary" onclick="socGenerate()">Generate</button>
+                  <button class="btn" onclick="signLock()">Sign & Lock</button>
+                </div>
+              </div>
+
+              <div class="doc_grid">
+                <div class="doc_left">
+                  <div class="section_title">SOC / Initial checklist (drives exact template)</div>
+                  <div id="soc_form" class="soc_form"></div>
+                </div>
+
+                <div class="doc_right">
+                  <div class="section_title">Rendered Note</div>
+                  <pre id="rendered_note" class="note_box"></pre>
+
+                  <div class="hr"></div>
+
+                  <div class="section_title">Audio recording</div>
+                  <div class="rec_row">
+                    <button class="btn" id="rec_start" onclick="startRecording()">Start</button>
+                    <button class="btn" id="rec_stop" onclick="stopRecording()" disabled>Stop</button>
+                    <button class="btn primary" id="rec_upload" onclick="uploadRecording()" disabled>Upload</button>
+                    <select id="rec_retention">
+                      <option value="30">30d retention</option>
+                      <option value="14">14d retention</option>
+                      <option value="7">7d retention</option>
+                    </select>
+                  </div>
+                  <div class="msg" id="rec_status">Not recording.</div>
+                  <audio id="rec_playback" controls class="audio"></audio>
+                </div>
+              </div>
+
+              <div class="msg" id="doc_msg"></div>
             </div>
           </div>
         </section>
 
         <!-- PATIENTS -->
-        <section id="page_patients" class="page" style="display:none;">
-          <div class="grid2">
-            <div class="card">
-              <div class="cardTitle">Select patient</div>
-              <div class="cardBody">
-                <select id="patient_select" onchange="selectPatient(this.value)">
-                  <option value="">Select…</option>
-                </select>
-                <div class="muted mt8" id="patient_detail"></div>
-              </div>
-            </div>
-
-            <div class="card">
-              <div class="cardTitle">Add / Edit patient</div>
-              <div class="cardBody">
-                <div class="row2">
-                  <div>
-                    <label>First</label>
-                    <input id="p_first" placeholder="First name">
-                  </div>
-                  <div>
-                    <label>Last</label>
-                    <input id="p_last" placeholder="Last name">
-                  </div>
-                </div>
-
-                <div class="row2">
-                  <div>
-                    <label>DOB</label>
-                    <input id="p_dob" type="date">
-                  </div>
-                  <div>
-                    <label>Phone</label>
-                    <input id="p_phone" placeholder="(555) 555-5555">
-                  </div>
-                </div>
-
-                <label>Address</label>
-                <input id="p_address" placeholder="Street, City, State Zip">
-
-                <label>Notes</label>
-                <textarea id="p_notes" rows="3" placeholder="Optional"></textarea>
-
-                <div class="row">
-                  <button class="btn primary" onclick="savePatient()">Save</button>
-                  <div class="msg inline" id="patient_save_msg"></div>
-                </div>
-              </div>
+        <section id="page_patients" class="page hidden">
+          <div class="page_head">
+            <div>
+              <div class="h1">Patients</div>
+              <div class="sub">Add/edit patients (basic directory).</div>
             </div>
           </div>
-        </section>
 
-        <!-- VISITS -->
-        <section id="page_visits" class="page" style="display:none;">
-          <div class="grid2 wideRight">
+          <div class="grid2">
             <div class="card">
-              <div class="cardTitle">Visits</div>
-              <div class="cardBody">
-                <div class="muted">Click a visit to load fields + checklist + rendered note.</div>
-                <div id="visits_list" class="list mt8"></div>
-
-                <hr class="sep">
-
-                <div class="cardTitleSm">Create visit</div>
-                <label>Patient</label>
-                <select id="visit_patient" onchange="setVal('patient_select', this.value); selectPatient(this.value);">
-                  <option value="">Select…</option>
-                </select>
-
-                <div class="row2">
-                  <div>
-                    <label>Visit type</label>
-                    <select id="visit_type">
-                      <option value="SOC">SOC</option>
-                      <option value="INITIAL">INITIAL</option>
-                      <option value="ROUTINE">ROUTINE</option>
-                      <option value="REASSESS">REASSESS</option>
-                      <option value="DC">DC</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label>Share address to team calendar</label>
-                    <select id="visit_share">
-                      <option value="Y">Yes</option>
-                      <option value="N">No</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="row2">
-                  <div>
-                    <label>Scheduled start</label>
-                    <input id="v_start" type="datetime-local">
-                  </div>
-                  <div>
-                    <label>Scheduled end</label>
-                    <input id="v_end" type="datetime-local">
-                  </div>
-                </div>
-
-                <div class="row">
-                  <button class="btn primary" onclick="createVisit()">Create</button>
-                  <div class="msg inline" id="visit_create_msg"></div>
-                </div>
+              <div class="card_title">Add / Edit</div>
+              <div class="form_row">
+                <div><label>First</label><input id="p_first"></div>
+                <div><label>Last</label><input id="p_last"></div>
               </div>
+              <div class="form_row">
+                <div><label>DOB</label><input id="p_dob" placeholder="YYYY-MM-DD"></div>
+                <div><label>Phone</label><input id="p_phone"></div>
+              </div>
+              <label>Address</label>
+              <input id="p_address">
+              <label>Notes</label>
+              <textarea id="p_notes" rows="3"></textarea>
+              <button class="btn primary" onclick="savePatient()">Save patient</button>
+              <div class="msg" id="patient_save_msg"></div>
             </div>
 
             <div class="card">
-              <div class="cardTitle">Documentation</div>
-              <div class="cardBody">
-                <div class="row2">
-                  <div>
-                    <label>Active visit ID</label>
-                    <input id="active_visit_id" placeholder="VIS-…" onkeydown="if(event.key==='Enter'){useVisit(this.value.trim())}">
-                  </div>
-                  <div class="rightAlign">
-                    <button class="btn" onclick="loadActive()">Load</button>
-                    <button class="btn" onclick="saveAll()">Save</button>
-                    <button class="btn primary" onclick="renderNote()">Generate</button>
-                    <button class="btn" onclick="signAndLock()">Sign & Lock</button>
-                  </div>
-                </div>
-
-                <div class="msg" id="doc_msg"></div>
-
-                <div class="split mt12">
-                  <div>
-                    <div class="cardTitleSm">Clinical fields</div>
-
-                    <label>SUBJECTIVE</label>
-                    <textarea id="f_subjective" rows="2"></textarea>
-
-                    <label>HOMEBOUND</label>
-                    <textarea id="f_homebound" rows="2"></textarea>
-
-                    <label>REFERRED BY</label>
-                    <input id="f_referred_by">
-
-                    <label>LIVING ARRANGEMENTS</label>
-                    <textarea id="f_living" rows="2"></textarea>
-
-                    <label>HISTORY</label>
-                    <textarea id="f_history" rows="2"></textarea>
-
-                    <label>PRIOR LEVEL OF FUNCTION</label>
-                    <textarea id="f_plof" rows="2"></textarea>
-
-                    <label>FALL HISTORY</label>
-                    <textarea id="f_falls" rows="2"></textarea>
-
-                    <hr class="sep">
-
-                    <label>ROM</label>
-                    <textarea id="f_rom" rows="2"></textarea>
-
-                    <label>STRENGTH</label>
-                    <textarea id="f_strength" rows="2"></textarea>
-
-                    <label>ENDURANCE</label>
-                    <textarea id="f_endurance" rows="2"></textarea>
-
-                    <label>SENSATION</label>
-                    <textarea id="f_sensation" rows="2"></textarea>
-
-                    <label>TRANSFERS</label>
-                    <textarea id="f_transfers" rows="2"></textarea>
-
-                    <label>GAIT</label>
-                    <textarea id="f_gait" rows="2"></textarea>
-
-                    <label>BALANCE</label>
-                    <textarea id="f_balance" rows="2"></textarea>
-
-                    <label>TINETTI</label>
-                    <textarea id="f_tinetti" rows="2"></textarea>
-
-                    <hr class="sep">
-
-                    <label>VITALS</label>
-                    <textarea id="f_vitals" rows="2"></textarea>
-
-                    <label>DISEASE MGMT</label>
-                    <textarea id="f_disease_mgmt" rows="2"></textarea>
-
-                    <label>SPECIAL INSTRUCTIONS/PRECAUTIONS</label>
-                    <textarea id="f_precautions" rows="2"></textarea>
-
-                    <label>HOME SAFETY</label>
-                    <textarea id="f_home_safety" rows="2"></textarea>
-
-                    <label>PHQ-2</label>
-                    <textarea id="f_phq2" rows="2"></textarea>
-
-                    <hr class="sep">
-
-                    <label>GAIT/BALANCE TRAINING</label>
-                    <textarea id="f_gait_training" rows="2"></textarea>
-
-                    <label>TRANSFER TRAINING</label>
-                    <textarea id="f_transfer_training" rows="2"></textarea>
-
-                    <label>THER EX</label>
-                    <textarea id="f_therex" rows="2"></textarea>
-
-                    <label>GOALS / PROGRESS</label>
-                    <textarea id="f_goal_progress" rows="2"></textarea>
-                  </div>
-
-                  <div>
-                    <div class="row">
-                      <div class="cardTitleSm">SOC / Initial checklist (drives exact template)</div>
-                      <button class="btn" onclick="toggleChecklist()">Toggle</button>
-                    </div>
-
-                    <div id="checklist_wrap" class="checklist"></div>
-
-                    <hr class="sep">
-
-                    <div class="cardTitleSm">Audio recording</div>
-                    <div class="row">
-                      <button class="btn" id="rec_start" onclick="startRecording()">Start</button>
-                      <button class="btn" id="rec_stop" onclick="stopRecording()" disabled>Stop</button>
-                      <button class="btn primary" id="rec_upload" onclick="uploadRecording()" disabled>Upload</button>
-                      <select id="rec_retention" class="mini">
-                        <option value="30">30d retention</option>
-                        <option value="14">14d retention</option>
-                        <option value="7">7d retention</option>
-                      </select>
-                    </div>
-                    <div class="muted" id="rec_status">Not recording.</div>
-                    <audio id="rec_playback" controls class="audio"></audio>
-
-                    <hr class="sep">
-
-                    <div class="cardTitleSm">Rendered note (exact template)</div>
-                    <pre id="rendered_note" class="noteBox"></pre>
-                  </div>
-                </div>
-
-              </div>
+              <div class="card_title">Patient list</div>
+              <div id="patients_list" class="list"></div>
             </div>
           </div>
         </section>
 
         <!-- CALENDAR -->
-        <section id="page_calendar" class="page" style="display:none;">
-          <div class="card">
-            <div class="cardTitle">Team calendar</div>
-            <div class="cardBody">
-              <div class="row2">
-                <div>
-                  <label>From</label>
-                  <input id="cal_from" type="date">
-                </div>
-                <div>
-                  <label>To</label>
-                  <input id="cal_to" type="date">
-                </div>
-              </div>
-              <div class="row">
-                <button class="btn primary" onclick="loadCalendar()">Load</button>
-              </div>
-              <div id="calendar_list" class="list mt8"></div>
-              <div class="muted mt8">Addresses only show if the visit was marked “Share address to team calendar”.</div>
+        <section id="page_calendar" class="page hidden">
+          <div class="page_head">
+            <div>
+              <div class="h1">Calendar</div>
+              <div class="sub">Shared schedule + addresses for safety.</div>
             </div>
+            <div class="actions">
+              <input id="cal_from" placeholder="from ISO (optional)">
+              <input id="cal_to" placeholder="to ISO (optional)">
+              <button class="btn" onclick="loadCalendar()">Load</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div id="calendar_list" class="list"></div>
           </div>
         </section>
 
         <!-- ADMIN -->
-        <section id="page_admin" class="page" style="display:none;">
+        <section id="page_admin" class="page hidden">
+          <div class="page_head">
+            <div>
+              <div class="h1">Admin</div>
+              <div class="sub">Supervisor/admin only.</div>
+            </div>
+          </div>
+
           <div class="grid2">
             <div class="card">
-              <div class="cardTitle">User management</div>
-              <div class="cardBody">
-                <div class="row2">
-                  <div>
-                    <label>User email</label>
-                    <input id="admin_user_email" placeholder="user@company.com">
-                  </div>
-                  <div>
-                    <label>Role</label>
-                    <select id="admin_user_role">
-                      <option value="clinician">clinician</option>
-                      <option value="supervisor">supervisor</option>
-                      <option value="admin">admin</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="row2">
-                  <div>
-                    <label>Active</label>
-                    <select id="admin_user_active">
-                      <option value="Y">Y</option>
-                      <option value="N">N</option>
-                    </select>
-                  </div>
-                  <div class="rightAlign">
-                    <button class="btn primary" onclick="adminUpsertUser()">Save user</button>
-                    <button class="btn" onclick="adminListUsers()">Refresh</button>
-                  </div>
-                </div>
-                <div id="admin_users_list" class="list mt8"></div>
-              </div>
+              <div class="card_title">Users</div>
+              <button class="btn" onclick="adminLoadUsers()">Reload users</button>
+              <div id="admin_users" class="list"></div>
             </div>
 
             <div class="card">
-              <div class="cardTitle">Patient lookup</div>
-              <div class="cardBody">
-                <label>Search (name, id)</label>
-                <input id="admin_patient_q" placeholder="e.g. Smith or PAT-123">
-                <div class="row">
-                  <button class="btn primary" onclick="adminFindPatients()">Search</button>
-                </div>
-                <div id="admin_patients_list" class="list mt8"></div>
-              </div>
+              <div class="card_title">Patient search</div>
+              <input id="admin_q" placeholder="Search patients...">
+              <button class="btn" onclick="adminSearchPatients()">Search</button>
+              <div id="admin_patients" class="list"></div>
             </div>
           </div>
         </section>
@@ -442,8 +281,6 @@
       </main>
     </div>
   </div>
-
-  <div id="toast" class="toast" style="display:none;"></div>
 
   <script src="app.js"></script>
 </body>
