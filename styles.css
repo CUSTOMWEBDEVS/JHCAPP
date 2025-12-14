@@ -1,12 +1,11 @@
-body{outline:12px solid hotpink !important;}
+/* JHCAPP - dark glass UI */
 :root{
   --bg0:#070A12;
   --bg1:#0b1020;
   --card:rgba(255,255,255,.06);
-  --card2:rgba(255,255,255,.08);
   --stroke:rgba(255,255,255,.12);
   --text:#e9ecff;
-  --muted:rgba(233,236,255,.65);
+  --muted:rgba(233,236,255,.66);
   --good:#36d6b5;
   --bad:#ff5b6e;
   --pri:#6a5cff;
@@ -16,10 +15,8 @@ body{outline:12px solid hotpink !important;}
   --r2:24px;
   --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
-
 *{box-sizing:border-box}
 html,body{height:100%}
-
 body{
   margin:0;
   font-family:var(--font);
@@ -27,7 +24,6 @@ body{
   background:var(--bg0);
   overflow:hidden;
 }
-
 #bg{
   position:fixed; inset:0;
   background:
@@ -37,10 +33,8 @@ body{
     linear-gradient(180deg, var(--bg1), var(--bg0));
   filter:saturate(1.1);
 }
-
 .hidden{display:none !important}
 
-/* AUTH */
 .overlay{
   position:fixed; inset:0;
   display:flex;
@@ -64,7 +58,7 @@ body{
   background:linear-gradient(135deg,var(--pri),var(--pri2));
   box-shadow:0 12px 30px rgba(106,92,255,.35);
 }
-.auth-title{font-size:18px;font-weight:800;letter-spacing:.3px}
+.auth-title{font-size:18px;font-weight:900;letter-spacing:.3px}
 .auth-sub{font-size:13px;color:var(--muted)}
 .tabs{display:flex; gap:8px; margin:12px 0 14px}
 .tab{
@@ -78,8 +72,6 @@ body{
 }
 .tab.active{background:rgba(106,92,255,.18); border-color:rgba(106,92,255,.45)}
 .panel label{display:block; margin:10px 0 6px; font-size:12px; color:var(--muted)}
-
-/* FORM CONTROLS */
 input,select,textarea{
   width:100%;
   padding:10px 12px;
@@ -89,13 +81,8 @@ input,select,textarea{
   color:var(--text);
   outline:none;
 }
-
-/* Fix: dropdown options invisible until hover (common on Windows + dark themes) */
-select, option{
-  color: var(--text);
-  background-color: #0b1020;
-}
-
+select{appearance:auto}
+select option{color:#111; background:#fff;} /* fixes invisible option text on some browsers */
 textarea{resize:vertical}
 input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-shadow:0 0 0 3px rgba(106,92,255,.16)}
 .msg{margin-top:12px;color:var(--muted);font-size:13px;min-height:18px}
@@ -110,25 +97,15 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   border-radius:14px;
   cursor:pointer;
   transition:.15s ease;
-  touch-action: manipulation;
 }
 .btn:hover{transform:translateY(-1px); background:rgba(255,255,255,.08)}
 .btn:disabled{opacity:.5; cursor:not-allowed; transform:none}
-.btn.primary{
-  border-color:rgba(106,92,255,.55);
-  background:rgba(106,92,255,.18);
-}
-.btn.danger{
-  border-color:rgba(255,91,110,.55);
-  background:rgba(255,91,110,.12);
-}
-.btn.ghost{
-  border-color:rgba(255,255,255,.14);
-  background:rgba(0,0,0,.15);
-}
+.btn.primary{border-color:rgba(106,92,255,.55); background:rgba(106,92,255,.18);}
+.btn.danger{border-color:rgba(255,91,110,.55); background:rgba(255,91,110,.12);}
+.btn.ghost{border-color:rgba(255,255,255,.14); background:rgba(0,0,0,.15);}
 .btn.full{width:100%}
+.btn.icon{padding:10px 12px; width:44px}
 
-/* APP LAYOUT */
 .app{
   position:fixed; inset:0;
   display:flex;
@@ -157,7 +134,6 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
 }
 .brand-name{font-weight:900;letter-spacing:.6px}
 .brand-sub{font-size:12px;color:var(--muted)}
-
 .userbox{display:flex;gap:8px;flex-wrap:wrap;padding:6px 6px 10px}
 .pill{
   display:inline-flex;
@@ -168,7 +144,6 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   font-size:12px;
   color:var(--muted);
 }
-
 .nav{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 .navbtn{
   border:1px solid var(--stroke);
@@ -189,7 +164,6 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   flex-direction:column;
   gap:14px;
 }
-
 .topbar{
   display:flex;
   justify-content:space-between;
@@ -202,9 +176,10 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   box-shadow:var(--shadow);
   backdrop-filter: blur(14px);
 }
-.h1{font-size:20px;font-weight:900}
+.top-left{display:flex; align-items:center; gap:12px}
+.h1{font-size:18px;font-weight:900}
 .sub{font-size:13px;color:var(--muted)}
-.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.top-actions{display:flex;gap:10px;align-items:center}
 
 .view{flex:1; overflow:auto; padding:2px}
 .card{
@@ -215,16 +190,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   backdrop-filter: blur(14px);
   padding:16px;
 }
-
-.cardhead{
-  display:flex;
-  justify-content:space-between;
-  gap:14px;
-  align-items:flex-start;
-  margin-bottom:10px;
-  flex-wrap:wrap;
-}
-
+.cardhead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:10px}
 .cardtitle{font-size:16px;font-weight:900}
 .cardtitle.sm{font-size:13px}
 .cardsub{font-size:12px;color:var(--muted)}
@@ -236,15 +202,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   gap:14px;
 }
 
-.list{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  max-height:360px;
-  overflow:auto;
-  padding-right:6px
-}
-
+.list{display:flex;flex-direction:column;gap:10px;max-height:360px;overflow:auto;padding-right:6px}
 .item{
   border:1px solid var(--stroke);
   background:rgba(255,255,255,.04);
@@ -253,8 +211,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
 }
 .item b{font-weight:900}
 .item .muted{font-size:12px;color:var(--muted); margin-top:4px}
-.item .row{display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap}
-
+.item .row{display:flex;gap:10px;margin-top:10px;align-items:center}
 .divider{height:1px;background:rgba(255,255,255,.10); margin:14px 0}
 
 .formgrid{
@@ -263,8 +220,9 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   gap:12px;
 }
 .formgrid .colspan{grid-column: 1 / -1}
-.formgrid .rowend{display:flex; gap:10px; align-items:end; justify-content:flex-end; flex-wrap:wrap}
+.formgrid .rowend{display:flex; gap:10px; align-items:end; justify-content:flex-end}
 .formgrid.tight{grid-template-columns: 1fr}
+
 .grid2.tight{grid-template-columns: 1fr 1fr}
 label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
 
@@ -283,7 +241,6 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
   margin-bottom:10px;
 }
 .socrow .full{grid-column: 1 / -1}
-
 .note{
   border:1px solid var(--stroke);
   background:rgba(0,0,0,.32);
@@ -294,163 +251,22 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
   white-space:pre-wrap;
   line-height:1.25;
 }
-
 .recrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
-/* ---------------------------
-   MOBILE FRIENDLY BREAKPOINTS
-   --------------------------- */
+/* Mobile */
 @media (max-width: 980px){
   body{overflow:auto}
-  .app{
-    position:relative;
-    inset:auto;
-    height:auto;
-    padding:12px;
-    gap:12px;
-    flex-direction:column;
-  }
-
-  /* Sidebar becomes topbar panel */
-  .sidebar{
-    width:auto;
-    flex-direction:row;
-    align-items:center;
-    gap:10px;
-    padding:10px;
-  }
-  .brand{margin:0; padding:6px 6px}
-  .userbox{padding:0; margin-left:auto}
-  .spacer{display:none}
-
-  /* Nav buttons horizontal */
-  .nav{
-    flex-direction:row;
-    gap:8px;
-    margin:0;
-    overflow:auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .navbtn{
-    white-space:nowrap;
-    text-align:center;
-    padding:10px 12px;
-    border-radius:999px;
-  }
-
-  /* Main scroll naturally */
-  .main{overflow:visible}
-
-  /* Grids become single column */
+  .app{position:relative; min-height:100vh; height:auto; overflow:auto; padding:12px; gap:12px}
   .grid2{grid-template-columns:1fr}
   .grid2.tight{grid-template-columns:1fr}
-
-  /* Forms become single column */
-  .formgrid{grid-template-columns:1fr}
-
-  /* Lists not hard capped */
-  .list{max-height:none}
-
-  /* SOC boxes allow more height on mobile */
-  .socbox, .note{max-height:none}
-
-  /* Reduce card padding slightly */
-  .card{padding:14px}
-  .topbar{padding:14px}
-  .h1{font-size:18px}
-}
-
-@media (max-width: 1024px), (pointer: coarse) {
-
-  html, body { height: auto !important; }
-  body { overflow: auto !important; }
-
-  /* stop “desktop fixed app” behavior on phones */
-  .app{
-    position: relative !important;
-    inset: auto !important;
-    height: auto !important;
-    min-height: 100vh !important;
-    overflow: visible !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-    padding: 12px !important;
-  }
-
-  /* sidebar becomes a full-width top panel */
   .sidebar{
-    width: 100% !important;
-    max-width: none !important;
-    height: auto !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 10px !important;
-    overflow: visible !important;
+    position:fixed;
+    top:12px; bottom:12px; left:12px;
+    width:min(320px, calc(100vw - 24px));
+    transform:translateX(-120%);
+    transition:.18s ease;
+    z-index:30;
   }
-
-  .brand{ margin: 0 !important; padding: 6px 6px !important; }
-  .userbox{ padding: 0 !important; }
-
-  /* nav becomes horizontal chips */
-  .nav{
-    display: flex !important;
-    flex-direction: row !important;
-    gap: 8px !important;
-    margin: 0 !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px !important;
-  }
-  .navbtn{
-    white-space: nowrap !important;
-    text-align: center !important;
-    padding: 10px 12px !important;
-    border-radius: 999px !important;
-    flex: 0 0 auto !important;
-  }
-
-  /* main becomes normal scrolling content */
-  .main{
-    width: 100% !important;
-    overflow: visible !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-  }
-
-  /* topbar stacks nicely */
-  .topbar{
-    flex-direction: column !important;
-    align-items: flex-start !important;
-  }
-  .top-actions{
-    width: 100% !important;
-    flex-wrap: wrap !important;
-    justify-content: flex-start !important;
-  }
-
-  /* kill 2-column layouts */
-  .grid2{ grid-template-columns: 1fr !important; }
-  .grid2.tight{ grid-template-columns: 1fr !important; }
-  .formgrid{ grid-template-columns: 1fr !important; }
-
-  /* remove hard height caps that make mobile feel broken */
-  .list{ max-height: none !important; }
-  .socbox{ max-height: none !important; }
-  .note{ max-height: none !important; }
-
-  /* make touch targets bigger */
-  input, select, textarea { padding: 12px 12px !important; }
-  .btn{ padding: 12px 14px !important; }
-
-  /* fix dropdown options visibility on iOS/Windows dark theme */
-  select, option{
-    color: var(--text) !important;
-    background-color: #0b1020 !important;
-  }
+  .sidebar.open{transform:translateX(0)}
+  .topbar{position:sticky; top:12px; z-index:10}
 }
-

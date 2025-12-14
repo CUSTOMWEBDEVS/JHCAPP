@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>JHC HH Doc + Safety</title>
   <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
   <div id="bg"></div>
 
-  <!-- AUTH MODAL / LANDING -->
+  <!-- AUTH / LANDING -->
   <div id="auth_overlay" class="overlay">
     <div class="auth-card">
       <div class="auth-brand">
@@ -21,8 +21,8 @@
       </div>
 
       <div class="tabs">
-        <button id="tab_login" class="tab active">Login</button>
-        <button id="tab_signup" class="tab">Sign up</button>
+        <button id="tab_login" class="tab active" type="button">Login</button>
+        <button id="tab_signup" class="tab" type="button">Sign up</button>
       </div>
 
       <div id="login_panel" class="panel">
@@ -30,7 +30,7 @@
         <input id="login_email" type="email" autocomplete="username" placeholder="you@company.com"/>
         <label>Password</label>
         <input id="login_pass" type="password" autocomplete="current-password" placeholder="••••••••"/>
-        <button id="btn_login" class="btn primary">Login</button>
+        <button id="btn_login" class="btn primary" type="button">Login</button>
       </div>
 
       <div id="signup_panel" class="panel hidden">
@@ -38,20 +38,18 @@
         <input id="signup_email" type="email" autocomplete="username" placeholder="you@company.com"/>
         <label>Password</label>
         <input id="signup_pass" type="password" autocomplete="new-password" placeholder="min 8 characters"/>
-        <button id="btn_signup" class="btn primary">Create account</button>
-        <div class="tiny">Your account starts as <b>clinician</b>. Admin/supervisor can change roles.</div>
+        <button id="btn_signup" class="btn primary" type="button">Create account</button>
+        <div class="tiny dim">Your account starts as <b>clinician</b>. Supervisor/admin can change roles.</div>
       </div>
 
       <div id="auth_msg" class="msg"></div>
-      <div class="tiny dim">
-        API: <span id="api_label"></span>
-      </div>
+      <div class="tiny dim">If login fails: use “Forgot password” in Admin/Supervisor.</div>
     </div>
   </div>
 
   <!-- APP -->
   <div id="app" class="app hidden">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-logo"></div>
         <div class="brand-text">
@@ -66,27 +64,30 @@
       </div>
 
       <nav class="nav">
-        <button class="navbtn active" data-view="visits">Visits & Notes</button>
-        <button class="navbtn" data-view="patients">Patients</button>
-        <button class="navbtn" data-view="calendar">Calendar</button>
-        <button class="navbtn" data-view="admin" id="admin_nav" style="display:none;">Admin</button>
+        <button class="navbtn active" data-view="visits" type="button">Visits & Notes</button>
+        <button class="navbtn" data-view="patients" type="button">Patients</button>
+        <button class="navbtn" data-view="calendar" type="button">Calendar</button>
+        <button class="navbtn" data-view="admin" id="admin_nav" style="display:none;" type="button">Admin</button>
       </nav>
 
       <div class="spacer"></div>
 
-      <button id="btn_logout" class="btn ghost full">Logout</button>
-      <div class="tiny dim">Autosave after 1s idle while typing.</div>
+      <button id="btn_logout" class="btn ghost full" type="button">Logout</button>
+      <div class="tiny dim">Autosave after 900ms idle while typing.</div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div>
-          <div class="h1">HH Workflow Dashboard</div>
-          <div class="sub">Everything saves to Sheets via Apps Script API</div>
+        <div class="top-left">
+          <button id="btn_menu" class="btn icon" type="button" aria-label="Menu">☰</button>
+          <div>
+            <div class="h1">HH Workflow Dashboard</div>
+            <div class="sub">Fast Sheets-backed documentation + safety</div>
+          </div>
         </div>
         <div class="top-actions">
-          <button id="btn_emergency" class="btn danger">Emergency</button>
-          <button id="btn_refresh" class="btn">Refresh</button>
+          <button id="btn_emergency" class="btn danger" type="button">Emergency</button>
+          <button id="btn_refresh" class="btn" type="button">Refresh</button>
           <div class="pill" id="net_state">Idle</div>
         </div>
       </header>
@@ -98,7 +99,7 @@
             <div class="cardhead">
               <div>
                 <div class="cardtitle">Visits</div>
-                <div class="cardsub">Click a visit to load fields + checklist + rendered note.</div>
+                <div class="cardsub">Open a visit → checklist + generator.</div>
               </div>
             </div>
 
@@ -107,37 +108,42 @@
             <div class="divider"></div>
 
             <div class="cardtitle">Create visit</div>
-
             <div class="formgrid">
-              <div>
+              <div class="colspan">
                 <label>Patient</label>
                 <select id="create_patient"></select>
               </div>
+
               <div>
                 <label>Visit type</label>
                 <select id="create_type">
-                  <option value="SOC">SOC</option>
+                  <option value="SOC" selected>SOC</option>
+                  <option value="InitialEval">Initial Eval</option>
                   <option value="Revisit">Revisit</option>
                   <option value="Discharge">Discharge</option>
                 </select>
               </div>
+
               <div>
                 <label>Share address to team calendar</label>
                 <select id="create_share">
-                  <option>Yes</option>
-                  <option selected>No</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No" selected>No</option>
                 </select>
               </div>
+
               <div>
                 <label>Scheduled start</label>
                 <input id="create_start" type="datetime-local"/>
               </div>
+
               <div>
                 <label>Scheduled end</label>
                 <input id="create_end" type="datetime-local"/>
               </div>
-              <div class="rowend">
-                <button id="btn_create_visit" class="btn primary">Create</button>
+
+              <div class="colspan rowend">
+                <button id="btn_create_visit" class="btn primary" type="button">Create</button>
               </div>
             </div>
 
@@ -148,18 +154,18 @@
             <div class="cardhead">
               <div>
                 <div class="cardtitle">Documentation</div>
-                <div class="cardsub">SOC checklist drives exact template output.</div>
+                <div class="cardsub">Checklist drives exact template output.</div>
               </div>
               <div class="cardactions">
-                <button id="btn_load" class="btn">Load</button>
-                <button id="btn_save" class="btn">Save</button>
-                <button id="btn_generate" class="btn primary">Generate</button>
-                <button id="btn_sign" class="btn ghost">Sign & Lock</button>
+                <button id="btn_load" class="btn" type="button">Load</button>
+                <button id="btn_save" class="btn" type="button">Save</button>
+                <button id="btn_generate" class="btn primary" type="button">Generate</button>
+                <button id="btn_sign" class="btn ghost" type="button">Sign & Lock</button>
               </div>
             </div>
 
             <div class="formgrid tight">
-              <div>
+              <div class="colspan">
                 <label>Active visit ID</label>
                 <input id="active_visit" placeholder="Click a visit on the left"/>
               </div>
@@ -167,7 +173,7 @@
 
             <div class="grid2 tight">
               <div>
-                <div class="cardtitle sm">SOC / Initial checklist (drives exact template)</div>
+                <div class="cardtitle sm" id="checklist_title">Checklist</div>
                 <div id="soc_form" class="socbox"></div>
               </div>
 
@@ -181,9 +187,9 @@
 
             <div class="cardtitle sm">Audio recording</div>
             <div class="recrow">
-              <button id="rec_start" class="btn">Start</button>
-              <button id="rec_stop" class="btn" disabled>Stop</button>
-              <button id="rec_upload" class="btn primary" disabled>Upload</button>
+              <button id="rec_start" class="btn" type="button">Start</button>
+              <button id="rec_stop" class="btn" type="button" disabled>Stop</button>
+              <button id="rec_upload" class="btn primary" type="button" disabled>Upload</button>
               <select id="rec_retention">
                 <option value="7">7d retention</option>
                 <option value="30" selected>30d retention</option>
@@ -204,18 +210,19 @@
           <div class="cardhead">
             <div>
               <div class="cardtitle">Patients</div>
-              <div class="cardsub">Add/update patient demographics. (Prototype only.)</div>
+              <div class="cardsub">Add/update demographics. (Only visible to clinician+.)</div>
             </div>
           </div>
 
           <div class="formgrid">
-            <div>
+            <div class="colspan">
               <label>Select</label>
               <select id="patient_select"></select>
             </div>
-            <div class="rowend">
-              <button id="btn_new_patient" class="btn">New</button>
-              <button id="btn_save_patient" class="btn primary">Save</button>
+
+            <div class="colspan rowend">
+              <button id="btn_new_patient" class="btn" type="button">New</button>
+              <button id="btn_save_patient" class="btn primary" type="button">Save</button>
             </div>
 
             <div>
@@ -254,12 +261,12 @@
           <div class="cardhead">
             <div>
               <div class="cardtitle">Team Calendar</div>
-              <div class="cardsub">Shared schedule + addresses (if selected at visit creation).</div>
+              <div class="cardsub">Shared schedule + address (if chosen at visit creation).</div>
             </div>
             <div class="cardactions">
               <input id="cal_from" placeholder="from ISO (optional)"/>
               <input id="cal_to" placeholder="to ISO (optional)"/>
-              <button id="btn_cal_load" class="btn">Load</button>
+              <button id="btn_cal_load" class="btn" type="button">Load</button>
             </div>
           </div>
           <div id="calendar_list" class="list"></div>
@@ -272,14 +279,14 @@
           <div class="cardhead">
             <div>
               <div class="cardtitle">Admin / Supervisor</div>
-              <div class="cardsub">Set passwords + manage roles (prototype).</div>
+              <div class="cardsub">Manage users + roles + password resets. Prototype.</div>
             </div>
           </div>
 
           <div class="formgrid">
             <div class="colspan">
               <div class="tiny dim">
-                NOTE: This prototype includes only “set password” (no email reset).
+                Tip: Create your first admin by editing the USERS sheet row role → "admin", then login and use this panel.
               </div>
             </div>
 
@@ -288,11 +295,29 @@
               <input id="admin_user_email" placeholder="user@company.com"/>
             </div>
             <div>
+              <label>Role</label>
+              <select id="admin_user_role">
+                <option value="clinician">clinician</option>
+                <option value="supervisor">supervisor</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+
+            <div>
               <label>New password</label>
               <input id="admin_user_pass" type="password" placeholder="min 8 chars"/>
             </div>
             <div class="rowend">
-              <button id="btn_admin_setpass" class="btn primary">Set password</button>
+              <button id="btn_admin_setpass" class="btn primary" type="button">Set password</button>
+            </div>
+
+            <div class="rowend colspan">
+              <button id="btn_admin_setrole" class="btn" type="button">Set role</button>
+              <button id="btn_admin_lookup_patient" class="btn" type="button">Lookup patient</button>
+            </div>
+
+            <div class="colspan">
+              <pre id="admin_output" class="note" style="max-height:220px;"></pre>
             </div>
           </div>
 
@@ -302,6 +327,7 @@
     </main>
   </div>
 
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,816 +1,730 @@
-/* app.js — JHC HH Doc + Safety (Frontend)
-   - Calls GAS Web App via POST (text/plain to avoid CORS preflight)
-   - Token session restore
-   - Bootstrap (1 call) -> me + patients + visits
-   - SOC checklist only (no duplicate clinical fields panel)
-   - Hard logout clears everything
-   - Mobile sidebar toggle (JS-driven)
-*/
-
+/* JHCAPP Frontend (GitHub Pages)
+ * Talks to Apps Script via form-POST (no CORS preflight).
+ * Stores token in localStorage.
+ */
 (() => {
-  // ====== CONFIG ======
-  const API_URL = window.API_URL || "https://script.google.com/macros/s/AKfycbx0ePTY8fQSCa4jcM6F97UNj3msJzg4O9wCRTZJfn_uJKRhPx92Qlrbv2LmzbTss8Sw/exec"; // e.g. https://script.google.com/macros/s/XXXX/exec
-  const LS_TOKEN = "JHC_TOKEN";
+  'use strict';
 
-  // ====== DOM HELPERS ======
-  const $ = (sel) => document.querySelector(sel);
+  const API_URL = (window.GAS_WEBAPP_URL || '').trim();
 
-  function setMsg(el, text, ok = true) {
-    if (!el) return;
-    el.textContent = text || "";
-    el.style.color = ok ? "rgba(233,236,255,.75)" : "rgba(255,91,110,.95)";
-  }
+  const $ = (id) => document.getElementById(id);
+  const q = (sel, root=document) => root.querySelector(sel);
+  const qa = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
-  function setNetState(text) {
-    const pill = $("#net_state");
-    if (pill) pill.textContent = text || "Idle";
-  }
-
-  // ====== STATE ======
-  let state = {
-    token: "",
+  const state = {
+    token: localStorage.getItem('jhc_token') || '',
     me: null,
     patients: [],
     visits: [],
-    activeVisitId: "",
-    soc: {},
-    socDirty: false,
-    socAutosaveTimer: null,
-    isMobileNavOpen: false,
+    activeVisit: null,
+    checklist: {},
+    locked: false,
+    rec: { mediaRecorder: null, chunks: [], blob: null, startedAt: null, endedAt: null }
   };
 
-  // ====== API (NO PREFLIGHT) ======
-  async function api(action, payload = {}) {
-    const req = { action, ...payload };
-    if (state.token && !req.token) req.token = state.token;
+  function setNet(text){ $('net_state').textContent = text; }
 
-    setNetState("Working…");
+  function showAuth(msg=''){
+    $('auth_overlay').classList.remove('hidden');
+    $('app').classList.add('hidden');
+    $('auth_msg').textContent = msg;
+    clearAppUI();
+  }
+  function showApp(){
+    $('auth_overlay').classList.add('hidden');
+    $('app').classList.remove('hidden');
+  }
 
-    // IMPORTANT: text/plain avoids CORS preflight on GAS web apps
+  function clearAppUI(){
+    $('visits_list').innerHTML = '';
+    $('create_patient').innerHTML = '';
+    $('patient_select').innerHTML = '';
+    $('calendar_list').innerHTML = '';
+    $('active_visit').value = '';
+    $('soc_form').innerHTML = '';
+    $('rendered_note').textContent = '';
+    $('doc_msg').textContent = '';
+    $('visit_msg').textContent = '';
+    $('patient_msg').textContent = '';
+    $('admin_msg').textContent = '';
+    $('admin_output').textContent = '';
+    state.activeVisit = null;
+    state.checklist = {};
+    state.locked = false;
+  }
+
+  function escapeHtml(s){
+    return String(s || '')
+      .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+      .replaceAll('"','&quot;').replaceAll("'","&#039;");
+  }
+
+  async function api(action, payload={}){
+    if (!API_URL || API_URL.includes('PASTE_YOUR_GAS_EXEC_URL_HERE')) {
+      throw new Error('Missing GAS URL. Open config.js and paste your Apps Script /exec URL.');
+    }
+
+    const body = new URLSearchParams();
+    body.set('action', action);
+    if (state.token) body.set('token', state.token);
+    body.set('payload', JSON.stringify(payload || {}));
+
+    setNet('Working…');
+
     const res = await fetch(API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(req),
+      method: 'POST',
+      body, // form-encoded => no preflight
     });
 
-    const txt = await res.text();
-    let data;
-    try {
-      data = JSON.parse(txt);
-    } catch {
-      throw new Error("Bad JSON from server: " + txt.slice(0, 200));
-    }
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch { throw new Error('Bad API response'); }
 
-    setNetState("Idle");
-
-    if (!data.ok) {
-      throw new Error(data.error || "API error");
-    }
-    return data;
+    if (!json.ok) throw new Error(json.error || 'API error');
+    setNet('Idle');
+    return json;
   }
 
-  // ====== SOC FORM SCHEMA ======
-  // This is the ONE source of truth for the SOC checklist + clinical values
-  // Keys MUST match what Code.gs uses in renderSocExact_()
-  const SOC_SCHEMA = [
-    {
-      title: "Header",
-      fields: [
-        { k: "insurance", label: "Insurance *", type: "text" },
-        { k: "admit_date", label: "Admit date *", type: "date" },
-        { k: "recent_hosp_related_to", label: "Recent hospitalization / related to *", type: "text" },
-        { k: "homebound_due_to_phrase", label: "Homebound due to (exact phrase) *", type: "text" },
-        { k: "referred_by_dr", label: "Referred by DR. *", type: "text" },
-        { k: "assist_with_adls", label: "Assist with ADLs *", type: "text" },
-      ],
-    },
-    {
-      title: "Clinical (PT Eval basics)",
-      fields: [
-        { k: "history", label: "HISTORY *", type: "textarea" },
-        { k: "plof", label: "PRIOR LEVEL OF FUNCTION *", type: "textarea" },
-        { k: "fall_history", label: "HISTORY OF FALLS *", type: "textarea" },
-
-        { k: "rom", label: "RANGE OF MOTION (ROM) *", type: "textarea" },
-        { k: "strength", label: "MANUAL MUSCLE STRENGTH *", type: "textarea" },
-        { k: "endurance_obj", label: "ENDURANCE (objective) *", type: "textarea" },
-        { k: "sensation", label: "SENSATION *", type: "textarea" },
-        { k: "transfers", label: "TRANSFERS *", type: "textarea" },
-        { k: "gait", label: "GAIT *", type: "textarea" },
-        { k: "tinetti", label: "TINETTI *", type: "text" },
-        { k: "balance_static", label: "BALANCE STATIC STANDING *", type: "textarea" },
-      ],
-    },
-    {
-      title: "Goal + Plan",
-      fields: [
-        { k: "goal_quote", label: 'GOAL: "___" *', type: "text" },
-        { k: "additional_comments", label: "ADDITIONAL COMMENTS *", type: "textarea" },
-        { k: "plan_sentence", label: "PLAN (extra sentence if different)", type: "textarea" },
-      ],
-    },
-    {
-      title: "Advance Directive / POA",
-      fields: [
-        { k: "ad_poa_educated", label: "Patient/caregiver instructed/educated *", type: "text" },
-        { k: "ad_poa_reviewed", label: "Forms provided and reviewed *", type: "text" },
-        { k: "ad_poa_left", label: "Forms left in home *", type: "text" },
-      ],
-    },
-    {
-      title: "Medication Safety",
-      fields: [
-        { k: "med_changed_updated", label: "Changed/Updated medications *", type: "text" },
-        { k: "med_reconciliation", label: "Performed medication reconciliation this date *", type: "text" },
-        { k: "meds_present", label: "All medications present in home *", type: "text" },
-      ],
-    },
-    {
-      title: "Skilled Obs + Dx flags",
-      fields: [
-        { k: "teaching_training_for", label: "Teaching and training for *", type: "text" },
-        { k: "vitals_within_params", label: "Vitals within parameters? *", type: "text" },
-        { k: "who_notified", label: "Who notified (Case Manager/PCP) *", type: "text" },
-
-        { k: "dx_htn", label: "HTN *", type: "text" },
-        { k: "dx_copd", label: "COPD *", type: "text" },
-        { k: "dx_depression", label: "DEPRESSION *", type: "text" },
-        { k: "dx_dmii", label: "DMII *", type: "text" },
-        { k: "dx_chf", label: "CHF *", type: "text" },
-      ],
-    },
-    {
-      title: "Cardiovascular",
-      fields: [
-        { k: "cv_edema", label: "Edema *", type: "text" },
-        { k: "cv_palpitations", label: "Palpitations *", type: "text" },
-        { k: "cv_endurance", label: "Endurance *", type: "text" },
-        { k: "cv_unable_weigh", label: "Unable to weigh due to *", type: "text" },
-        { k: "cv_right_cm", label: "RIGHT (ankle/calf) cm *", type: "text" },
-        { k: "cv_left_cm", label: "LEFT (ankle/calf) cm *", type: "text" },
-      ],
-    },
-    {
-      title: "Resp / GI / Wound / Infection",
-      fields: [
-        { k: "resp_uses_o2", label: "Uses supplemental oxygen *", type: "text" },
-        { k: "resp_o2_lpm", label: "Oxygen L/min", type: "text" },
-        { k: "resp_o2_route", label: "Route (nasal cannula)", type: "text" },
-        { k: "resp_nebulizer", label: "Nebulizer *", type: "text" },
-        { k: "resp_sob", label: "Short of Breath *", type: "text" },
-
-        { k: "gi_last_bm", label: "Last bowel movement *", type: "date" },
-        { k: "gi_appetite", label: "Appetite *", type: "text" },
-
-        { k: "wound_statement", label: "WOUND statement *", type: "textarea" },
-
-        { k: "covid_symptoms_reported", label: "Covid symptoms reported *", type: "text" },
-        { k: "covid_symptoms_detail", label: "Symptoms detail/actions", type: "textarea" },
-      ],
-    },
-    {
-      title: "Home safety + Emergency preparedness + PHQ-2",
-      fields: [
-        { k: "home_safety_teaching", label: "Home safety teaching (exact phrase) *", type: "textarea" },
-        { k: "emerg_family", label: "FAMILY *", type: "text" },
-        { k: "emerg_with", label: "with ___ *", type: "text" },
-        { k: "emerg_special_needs", label: "special needs of ___ *", type: "text" },
-
-        { k: "phq2_interest", label: "PHQ-2 interest answer *", type: "text" },
-        { k: "phq2_depressed", label: "PHQ-2 depressed answer *", type: "text" },
-      ],
-    },
-    {
-      title: "Interventions + HEP + MD/risks/goals",
-      fields: [
-        { k: "gait_balance_training", label: "GAIT/BALANCE TRAINING *", type: "textarea" },
-        { k: "transfer_training", label: "TRANSFER TRAINING *", type: "textarea" },
-        { k: "ther_ex", label: "THER EX *", type: "textarea" },
-
-        { k: "hep_details", label: "HEP details *", type: "textarea" },
-        { k: "attending_md", label: "Attending MD *", type: "text" },
-        { k: "primary_dx_focus", label: "Primary Dx / focus of care *", type: "text" },
-        { k: "rehosp_risks", label: "Re-hospitalization risks *", type: "text" },
-        { k: "anticipated_needs_future", label: "Anticipated needs/education future visits *", type: "textarea" },
-
-        { k: "short_term_weeks", label: "Short term goals weeks *", type: "text" },
-        { k: "long_term_weeks", label: "Long term goals weeks *", type: "text" },
-        { k: "patient_identified_goal", label: "Patient identified goal *", type: "text" },
-      ],
-    },
-    {
-      title: "Disease mgmt + precautions",
-      fields: [
-        { k: "disease_mgmt", label: "DISEASE MANAGEMENT teaching/ training *", type: "textarea" },
-        { k: "special_instructions_precautions", label: "SPECIAL INSTRUCTIONS/PRECAUTIONS *", type: "textarea" },
-      ],
-    },
-  ];
-
-  // ====== RENDER SOC FORM ======
-  function renderSocForm(container) {
-    if (!container) return;
-    container.innerHTML = "";
-
-    SOC_SCHEMA.forEach((section) => {
-      const h = document.createElement("div");
-      h.style.fontWeight = "900";
-      h.style.margin = "10px 0 8px";
-      h.textContent = section.title;
-      container.appendChild(h);
-
-      section.fields.forEach((f) => {
-        const wrap = document.createElement("div");
-        wrap.style.marginBottom = "10px";
-
-        const lab = document.createElement("label");
-        lab.textContent = f.label;
-        wrap.appendChild(lab);
-
-        let input;
-        if (f.type === "textarea") {
-          input = document.createElement("textarea");
-          input.rows = 2;
-        } else {
-          input = document.createElement("input");
-          input.type = (f.type === "date") ? "date" : "text";
-        }
-
-        input.value = state.soc[f.k] || "";
-        input.dataset.k = f.k;
-
-        input.addEventListener("input", () => {
-          state.soc[f.k] = input.value;
-          state.socDirty = true;
-          scheduleSocAutosave();
-        });
-
-        wrap.appendChild(input);
-        container.appendChild(wrap);
-      });
-    });
+  /* ---------- Auth ---------- */
+  function setTabs(which){
+    $('tab_login').classList.toggle('active', which === 'login');
+    $('tab_signup').classList.toggle('active', which === 'signup');
+    $('login_panel').classList.toggle('hidden', which !== 'login');
+    $('signup_panel').classList.toggle('hidden', which !== 'signup');
+    $('auth_msg').textContent = '';
   }
 
-  function scheduleSocAutosave() {
-    clearTimeout(state.socAutosaveTimer);
-    state.socAutosaveTimer = setTimeout(async () => {
-      if (!state.activeVisitId) return;
-      if (!state.socDirty) return;
-      try {
-        await api("soc.set", { visit_id: state.activeVisitId, soc: state.soc });
-        state.socDirty = false;
-        setMsg($("#doc_msg"), "Autosaved.");
-      } catch (e) {
-        setMsg($("#doc_msg"), "Autosave failed: " + e.message, false);
-      }
-    }, 900);
-  }
-
-  // ====== AUTH + SESSION ======
-  function showAuth() {
-    $("#auth_overlay")?.classList.remove("hidden");
-    $("#app")?.classList.add("hidden");
-  }
-  function showApp() {
-    $("#auth_overlay")?.classList.add("hidden");
-    $("#app")?.classList.remove("hidden");
-  }
-
-  function hardLogout() {
-    localStorage.removeItem(LS_TOKEN);
-
-    state = {
-      token: "",
-      me: null,
-      patients: [],
-      visits: [],
-      activeVisitId: "",
-      soc: {},
-      socDirty: false,
-      socAutosaveTimer: null,
-      isMobileNavOpen: false,
-    };
-
-    // Clear DOM
-    if ($("#me_email")) $("#me_email").textContent = "";
-    if ($("#me_role")) $("#me_role").textContent = "";
-    if ($("#visits_list")) $("#visits_list").innerHTML = "";
-    if ($("#soc_form")) $("#soc_form").innerHTML = "";
-    if ($("#rendered_note")) $("#rendered_note").textContent = "";
-    if ($("#active_visit")) $("#active_visit").value = "";
-    if ($("#visit_msg")) $("#visit_msg").textContent = "";
-    if ($("#doc_msg")) $("#doc_msg").textContent = "";
-    if ($("#patient_msg")) $("#patient_msg").textContent = "";
-    if ($("#admin_msg")) $("#admin_msg").textContent = "";
-    if ($("#calendar_list")) $("#calendar_list").innerHTML = "";
-
-    setNetState("Idle");
-    showAuth();
-  }
-
-  async function doBootstrap() {
-    const data = await api("bootstrap", {});
-    state.me = data.me;
-    state.patients = data.patients || [];
-    state.visits = data.visits || [];
-
-    $("#me_email").textContent = "User: " + (state.me?.email || "");
-    $("#me_role").textContent = "Role: " + (state.me?.role || "");
-
-    // Admin tab visibility
-    const isAdmin = ["admin", "supervisor"].includes(String(state.me?.role || ""));
-    const adminNav = $("#admin_nav");
-    if (adminNav) adminNav.style.display = isAdmin ? "" : "none";
-
-    renderPatientsSelects();
-    renderVisitsList();
-  }
-
-  // ====== NAV / VIEWS ======
-  function setView(view) {
-    const views = ["visits", "patients", "calendar", "admin"];
-    views.forEach((v) => {
-      const el = $("#view_" + v);
-      if (!el) return;
-      el.classList.toggle("hidden", v !== view);
-    });
-
-    document.querySelectorAll(".navbtn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.view === view);
-    });
-
-    // close mobile nav after selection
-    closeMobileNav();
-  }
-
-  // ====== VISITS ======
-  function patientLabel(p) {
-    const name = [p.last, p.first].filter(Boolean).join(", ");
-    return name || p.patient_id;
-  }
-
-  function renderVisitsList() {
-    const box = $("#visits_list");
-    if (!box) return;
-    box.innerHTML = "";
-
-    const visits = (state.visits || []).slice(0, 100);
-
-    visits.forEach((v) => {
-      const item = document.createElement("div");
-      item.className = "item";
-
-      const pat = state.patients.find((p) => p.patient_id === v.patient_id);
-      const patName = pat ? patientLabel(pat) : v.patient_id;
-
-      const title = document.createElement("b");
-      title.textContent = `${v.visit_id} — ${v.visit_type} — ${v.status}`;
-      item.appendChild(title);
-
-      const meta = document.createElement("div");
-      meta.className = "muted";
-      meta.textContent = `patient: ${patName} • start: ${v.scheduled_start || ""}`;
-      item.appendChild(meta);
-
-      const row = document.createElement("div");
-      row.className = "row";
-      const btn = document.createElement("button");
-      btn.className = "btn";
-      btn.textContent = "Open";
-      btn.onclick = () => openVisit(v.visit_id);
-      row.appendChild(btn);
-      item.appendChild(row);
-
-      box.appendChild(item);
-    });
-  }
-
-  async function openVisit(visitId) {
-    state.activeVisitId = visitId;
-    $("#active_visit").value = visitId;
-    setMsg($("#doc_msg"), "Loading…");
-
-    // load SOC + rendered note in parallel
-    try {
-      const [socRes, noteRes] = await Promise.all([
-        api("soc.get", { visit_id: visitId }),
-        api("notes.getRendered", { visit_id: visitId }),
-      ]);
-
-      state.soc = socRes.soc || {};
-      renderSocForm($("#soc_form"));
-
-      $("#rendered_note").textContent = (noteRes.note_text || "").trim();
-      setMsg($("#doc_msg"), socRes.locked ? "Visit is SIGNED/LOCKED." : "Loaded.");
-    } catch (e) {
-      setMsg($("#doc_msg"), "Load failed: " + e.message, false);
+  async function signup(){
+    try{
+      $('auth_msg').textContent = '';
+      const email = $('signup_email').value.trim();
+      const password = $('signup_pass').value;
+      const out = await api('auth.signup', { email, password });
+      state.token = out.token;
+      localStorage.setItem('jhc_token', state.token);
+      await bootstrap();
+    }catch(e){
+      $('auth_msg').textContent = e.message || String(e);
     }
   }
 
-  async function createVisit() {
-    const patient_id = $("#create_patient").value;
-    const visit_type = $("#create_type").value;
-    const share_to_calendar = $("#create_share").value;
-    const scheduled_start = $("#create_start").value ? new Date($("#create_start").value).toISOString() : "";
-    const scheduled_end = $("#create_end").value ? new Date($("#create_end").value).toISOString() : "";
-
-    try {
-      const data = await api("visits.create", {
-        visit: { patient_id, visit_type, share_to_calendar, scheduled_start, scheduled_end },
-      });
-      setMsg($("#visit_msg"), "Created " + data.visit.visit_id);
-      await refreshAll();
-      await openVisit(data.visit.visit_id);
-    } catch (e) {
-      setMsg($("#visit_msg"), e.message, false);
+  async function login(){
+    try{
+      $('auth_msg').textContent = '';
+      const email = $('login_email').value.trim();
+      const password = $('login_pass').value;
+      const out = await api('auth.login', { email, password });
+      state.token = out.token;
+      localStorage.setItem('jhc_token', state.token);
+      await bootstrap();
+    }catch(e){
+      $('auth_msg').textContent = e.message || String(e);
     }
   }
 
-  async function refreshAll() {
-    try {
-      await doBootstrap();
-      setMsg($("#visit_msg"), "Refreshed.");
-    } catch (e) {
-      setMsg($("#visit_msg"), "Refresh failed: " + e.message, false);
+  function logout(){
+    state.token = '';
+    state.me = null;
+    localStorage.removeItem('jhc_token');
+    showAuth('Logged out.');
+  }
+
+  /* ---------- Bootstrap ---------- */
+  async function bootstrap(){
+    try{
+      const out = await api('bootstrap', {});
+      state.me = out.me;
+      state.patients = out.patients || [];
+      state.visits = out.visits || [];
+      $('me_email').textContent = state.me.email;
+      $('me_role').textContent = state.me.role;
+      $('admin_nav').style.display = (['admin','supervisor'].includes(state.me.role)) ? '' : 'none';
+
+      renderPatientSelects();
+      renderVisits();
+      showApp();
+      closeSidebar();
+    }catch(e){
+      logout();
+      showAuth(e.message || 'Session expired. Please login again.');
     }
   }
 
-  // ====== PATIENTS ======
-  function renderPatientsSelects() {
-    const createSel = $("#create_patient");
-    const sel = $("#patient_select");
-
-    const opts = (state.patients || []).map((p) => ({
-      id: p.patient_id,
-      label: `${patientLabel(p)} (${p.patient_id})`,
-    }));
-
-    function fill(selectEl) {
-      if (!selectEl) return;
-      selectEl.innerHTML = "";
-      opts.forEach((o) => {
-        const op = document.createElement("option");
-        op.value = o.id;
-        op.textContent = o.label;
-        selectEl.appendChild(op);
-      });
-    }
-
-    fill(createSel);
-    fill(sel);
-
-    if (sel && opts.length) {
-      sel.onchange = () => loadPatientForm(sel.value);
-      loadPatientForm(sel.value);
-    }
+  /* ---------- Navigation ---------- */
+  function setView(name){
+    qa('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+    qa('.view').forEach(v => v.classList.add('hidden'));
+    $('view_' + name).classList.remove('hidden');
+    closeSidebar();
   }
 
-  function loadPatientForm(patientId) {
-    const p = state.patients.find((x) => x.patient_id === patientId);
-    if (!p) return;
-
-    $("#p_first").value = p.first || "";
-    $("#p_last").value = p.last || "";
-    $("#p_dob").value = p.dob || "";
-    $("#p_phone").value = p.phone || "";
-    $("#p_address").value = p.address || "";
-    $("#p_notes").value = p.notes || "";
+  function toggleSidebar(){
+    $('sidebar').classList.toggle('open');
+  }
+  function closeSidebar(){
+    $('sidebar').classList.remove('open');
   }
 
-  async function savePatient() {
-    const sel = $("#patient_select");
-    const currentId = sel.value;
-    const existing = state.patients.find((p) => p.patient_id === currentId);
+  /* ---------- Patients ---------- */
+  function renderPatientSelects(){
+    const opts = ['<option value="">Select patient…</option>']
+      .concat(state.patients.map(p => `<option value="${escapeHtml(p.patient_id)}">${escapeHtml(p.last)}, ${escapeHtml(p.first)} (${escapeHtml(p.patient_id)})</option>`));
+    $('create_patient').innerHTML = opts.join('');
+    $('patient_select').innerHTML = opts.join('');
+  }
 
-    const payload = {
-      patient_id: existing?.patient_id || "",
-      first: $("#p_first").value.trim(),
-      last: $("#p_last").value.trim(),
-      dob: $("#p_dob").value.trim(),
-      phone: $("#p_phone").value.trim(),
-      address: $("#p_address").value.trim(),
-      notes: $("#p_notes").value.trim(),
-    };
+  function fillPatientForm(p){
+    $('p_first').value = p?.first || '';
+    $('p_last').value = p?.last || '';
+    $('p_dob').value = p?.dob || '';
+    $('p_phone').value = p?.phone || '';
+    $('p_address').value = p?.address || '';
+    $('p_notes').value = p?.notes || '';
+  }
 
-    try {
-      await api("patients.upsert", { patient: payload });
-      setMsg($("#patient_msg"), "Saved.");
-      await refreshAll();
-    } catch (e) {
-      setMsg($("#patient_msg"), e.message, false);
+  async function savePatient(){
+    try{
+      const patient_id = $('patient_select').value.trim() || '';
+      const patient = {
+        patient_id,
+        first: $('p_first').value.trim(),
+        last: $('p_last').value.trim(),
+        dob: $('p_dob').value.trim(),
+        phone: $('p_phone').value.trim(),
+        address: $('p_address').value.trim(),
+        notes: $('p_notes').value.trim(),
+        active: 'Y'
+      };
+      const out = await api('patients.upsert', { patient });
+      $('patient_msg').textContent = 'Saved ' + out.patient.patient_id;
+      await bootstrap(); // refresh lists
+      $('patient_select').value = out.patient.patient_id;
+      fillPatientForm(out.patient);
+    }catch(e){
+      $('patient_msg').textContent = e.message || String(e);
     }
   }
 
-  function newPatient() {
-    $("#p_first").value = "";
-    $("#p_last").value = "";
-    $("#p_dob").value = "";
-    $("#p_phone").value = "";
-    $("#p_address").value = "";
-    $("#p_notes").value = "";
-    setMsg($("#patient_msg"), "Enter info and press Save.");
-  }
-
-  // ====== DOC ACTIONS ======
-  async function saveSoc() {
-    if (!state.activeVisitId) return setMsg($("#doc_msg"), "Pick a visit first.", false);
-    try {
-      await api("soc.set", { visit_id: state.activeVisitId, soc: state.soc });
-      state.socDirty = false;
-      setMsg($("#doc_msg"), "Saved.");
-    } catch (e) {
-      setMsg($("#doc_msg"), e.message, false);
-    }
-  }
-
-  async function loadSoc() {
-    if (!state.activeVisitId) return setMsg($("#doc_msg"), "Pick a visit first.", false);
-    try {
-      const data = await api("soc.get", { visit_id: state.activeVisitId });
-      state.soc = data.soc || {};
-      renderSocForm($("#soc_form"));
-      setMsg($("#doc_msg"), "Loaded.");
-    } catch (e) {
-      setMsg($("#doc_msg"), e.message, false);
-    }
-  }
-
-  async function generateNote() {
-    if (!state.activeVisitId) return setMsg($("#doc_msg"), "Pick a visit first.", false);
-    try {
-      const data = await api("notes.render", { visit_id: state.activeVisitId });
-      $("#rendered_note").textContent = (data.note_text || "").trim();
-      setMsg($("#doc_msg"), "Generated.");
-    } catch (e) {
-      setMsg($("#doc_msg"), e.message, false);
-    }
-  }
-
-  async function signAndLock() {
-    if (!state.activeVisitId) return setMsg($("#doc_msg"), "Pick a visit first.", false);
-    const ok = confirm("Sign & lock this visit? (No more edits after this)");
-    if (!ok) return;
-    try {
-      await api("notes.sign", { visit_id: state.activeVisitId });
-      setMsg($("#doc_msg"), "SIGNED/LOCKED.");
-    } catch (e) {
-      setMsg($("#doc_msg"), e.message, false);
-    }
-  }
-
-  // ====== CALENDAR ======
-  async function loadCalendar() {
-    try {
-      const fromIso = $("#cal_from").value.trim() || null;
-      const toIso = $("#cal_to").value.trim() || null;
-      const data = await api("calendar.list", { fromIso, toIso });
-
-      const box = $("#calendar_list");
-      box.innerHTML = "";
-      (data.rows || []).forEach((r) => {
-        const div = document.createElement("div");
-        div.className = "item";
-        div.innerHTML = `<b>${r.start || ""}</b><div class="muted">${r.patient_label || ""} • ${r.address || ""}</div>`;
-        box.appendChild(div);
-      });
-    } catch (e) {
-      alert("Calendar load failed: " + e.message);
-    }
-  }
-
-  // ====== ADMIN ======
-  async function adminSetPass() {
-    try {
-      const email = $("#admin_user_email").value.trim();
-      const newPassword = $("#admin_user_pass").value;
-      await api("auth.setPassword", { email, newPassword });
-      setMsg($("#admin_msg"), "Password set.");
-    } catch (e) {
-      setMsg($("#admin_msg"), e.message, false);
-    }
-  }
-
-  // ====== EMERGENCY ======
-  async function emergency() {
-    if (!state.activeVisitId) {
-      alert("Pick a visit first so the incident links to that patient/visit.");
+  /* ---------- Visits ---------- */
+  function renderVisits(){
+    const box = $('visits_list');
+    if (!state.visits.length){
+      box.innerHTML = `<div class="item"><b>No visits yet</b><div class="muted">Create one on the left.</div></div>`;
       return;
     }
-
-    const doLog = confirm("Log an emergency incident for this visit?");
-    if (!doLog) return;
-
-    try {
-      await api("emergency.trigger", {
-        visit_id: state.activeVisitId,
-        type: "Emergency",
-        severity: "High",
-        situation: "User pressed Emergency",
-        location: "",
-      });
-    } catch (e) {
-      alert("Failed to log incident: " + e.message);
-      return;
-    }
-
-    // After logging: prompt to call 911 (cannot call automatically)
-    const callNow = confirm("Call 911 now?");
-    if (callNow) {
-      // On mobile this opens dialer; on desktop it may do nothing or prompt
-      window.location.href = "tel:911";
-    }
+    box.innerHTML = state.visits.map(v => `
+      <div class="item">
+        <div><b>${escapeHtml(v.visit_id)}</b> — ${escapeHtml(v.visit_type)} — ${escapeHtml(v.status)}</div>
+        <div class="muted">patient: ${escapeHtml(v.patient_id)} | start: ${escapeHtml(v.scheduled_start || '')}</div>
+        <div class="row">
+          <button class="btn" type="button" data-open="${escapeHtml(v.visit_id)}">Open</button>
+        </div>
+      </div>
+    `).join('');
+    qa('[data-open]', box).forEach(btn => btn.addEventListener('click', () => openVisit(btn.dataset.open)));
   }
 
-  // ====== MOBILE NAV (JS-DRIVEN) ======
-  function injectMobileNavButton() {
-    const topbar = document.querySelector(".topbar");
-    if (!topbar) return;
-
-    // Only inject once
-    if ($("#btn_nav_toggle")) return;
-
-    const btn = document.createElement("button");
-    btn.id = "btn_nav_toggle";
-    btn.className = "btn";
-    btn.textContent = "Menu";
-    btn.style.marginRight = "8px";
-
-    btn.onclick = () => {
-      state.isMobileNavOpen ? closeMobileNav() : openMobileNav();
-    };
-
-    // Insert at start of top-actions area if possible
-    const actions = document.querySelector(".top-actions");
-    if (actions) actions.prepend(btn);
-  }
-
-  function openMobileNav() {
-    const sidebar = document.querySelector(".sidebar");
-    if (!sidebar) return;
-
-    sidebar.style.position = "fixed";
-    sidebar.style.zIndex = "50";
-    sidebar.style.left = "18px";
-    sidebar.style.top = "18px";
-    sidebar.style.bottom = "18px";
-    sidebar.style.maxWidth = "88vw";
-    sidebar.style.width = "320px";
-
-    // overlay backdrop
-    let overlay = $("#mobile_overlay");
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.id = "mobile_overlay";
-      overlay.style.position = "fixed";
-      overlay.style.inset = "0";
-      overlay.style.background = "rgba(0,0,0,.55)";
-      overlay.style.zIndex = "40";
-      overlay.onclick = () => closeMobileNav();
-      document.body.appendChild(overlay);
-    }
-
-    state.isMobileNavOpen = true;
-  }
-
-  function closeMobileNav() {
-    const sidebar = document.querySelector(".sidebar");
-    if (!sidebar) return;
-
-    // Only collapse on small screens; otherwise leave normal desktop layout alone
-    if (window.innerWidth > 900) return;
-
-    sidebar.style.position = "";
-    sidebar.style.zIndex = "";
-    sidebar.style.left = "";
-    sidebar.style.top = "";
-    sidebar.style.bottom = "";
-    sidebar.style.maxWidth = "";
-    sidebar.style.width = "";
-
-    const overlay = $("#mobile_overlay");
-    if (overlay) overlay.remove();
-
-    state.isMobileNavOpen = false;
-  }
-
-  function onResize() {
-    injectMobileNavButton();
-    if (window.innerWidth > 900) {
-      // Ensure overlay removed and sidebar normal
-      const overlay = $("#mobile_overlay");
-      if (overlay) overlay.remove();
-      state.isMobileNavOpen = false;
-    } else {
-      // default closed
-      closeMobileNav();
+  async function createVisit(){
+    try{
+      const patient_id = $('create_patient').value.trim();
+      if (!patient_id) return alert('Select a patient.');
+      const visit = {
+        patient_id,
+        visit_type: $('create_type').value,
+        scheduled_start: $('create_start').value,
+        scheduled_end: $('create_end').value,
+        share_to_calendar: $('create_share').value
+      };
+      const out = await api('visits.create', { visit });
+      $('visit_msg').textContent = 'Created ' + out.visit.visit_id;
+      await bootstrap();
+      await openVisit(out.visit.visit_id);
+    }catch(e){
+      $('visit_msg').textContent = e.message || String(e);
     }
   }
 
-  // ====== INIT ======
-  async function init() {
-    $("#api_label").textContent = API_URL;
+  async function openVisit(visit_id){
+    $('active_visit').value = visit_id;
+    state.activeVisit = visit_id;
+    $('rendered_note').textContent = '';
+    $('doc_msg').textContent = '';
+    await loadChecklistAndRendered();
+  }
 
-    // Tabs
-    $("#tab_login").onclick = () => {
-      $("#tab_login").classList.add("active");
-      $("#tab_signup").classList.remove("active");
-      $("#login_panel").classList.remove("hidden");
-      $("#signup_panel").classList.add("hidden");
-    };
-    $("#tab_signup").onclick = () => {
-      $("#tab_signup").classList.add("active");
-      $("#tab_login").classList.remove("active");
-      $("#signup_panel").classList.remove("hidden");
-      $("#login_panel").classList.add("hidden");
-    };
+  /* ---------- Checklist + Autosave ---------- */
+  const CHECKLIST_SCHEMAS = {
+    SOC: [
+      header('Header'),
+      f('insurance','Insurance *'),
+      f('admit_date','Admit date *','date'),
+      f('recent_hosp_related_to','Recent hospitalization / related to *'),
+      f('homebound_due_to_phrase','Homebound due to (exact phrase) *'),
+      f('referred_by_dr','Referred by DR. *'),
+      f('assist_with_adls','Assist with ADLs *'),
 
-    // Auth
-    $("#btn_login").onclick = async () => {
-      try {
-        setMsg($("#auth_msg"), "Logging in…");
-        const email = $("#login_email").value.trim();
-        const password = $("#login_pass").value;
-        const data = await api("auth.login", { email, password });
+      header('Goal + Plan'),
+      f('goal_quote','GOAL: "___" *'),
+      f('additional_comments','ADDITIONAL COMMENTS *'),
+      f('plan_sentence','PLAN (exact sentence if different)'),
 
-        state.token = data.token;
-        localStorage.setItem(LS_TOKEN, state.token);
+      header('Advance Directive/POA'),
+      f('ad_poa_educated','Patient/caregiver instructed/educated *','yesno'),
+      f('ad_poa_reviewed','Forms provided and reviewed *','yesno'),
+      f('ad_poa_left','Forms left in home *','yesno'),
 
-        showApp();
-        await doBootstrap();
-        setView("visits");
-        setMsg($("#auth_msg"), "");
-      } catch (e) {
-        setMsg($("#auth_msg"), e.message, false);
+      header('Medication Safety'),
+      f('med_changed_updated','Changed/Updated medications *'),
+      f('med_reconciliation','Performed medication reconciliation this date *'),
+      f('meds_present','All medications present in home *'),
+
+      header('Skilled Obs + Dx flags'),
+      f('teaching_training_for','Teaching and training for *'),
+      f('vitals_within_params','Vitals within parameters? *'),
+      f('who_notified','Who notified (Case Manager/PCP) *'),
+      f('dx_htn','HTN *','yesno'),
+      f('dx_copd','COPD *','yesno'),
+      f('dx_depression','DEPRESSION *','yesno'),
+      f('dx_dmii','DMII *','yesno'),
+      f('dx_chf','CHF *','yesno'),
+
+      header('Cardiovascular'),
+      f('cv_edema','Edema *'),
+      f('cv_palpitations','Palpitations *'),
+      f('cv_endurance','Endurance *'),
+      f('cv_unable_weigh','Unable to weigh due to *'),
+      f('cv_right_cm','RIGHT (ankle/calf) cm *'),
+      f('cv_left_cm','LEFT (ankle/calf) cm *'),
+
+      header('Resp / GI / Wound / Infection'),
+      f('resp_uses_o2','Uses supplemental oxygen *','yesno'),
+      f('resp_o2_lpm','Oxygen L/min'),
+      f('resp_o2_route','Route (nasal cannula)'),
+      f('resp_nebulizer','Nebulizer *','yesno'),
+      f('resp_sob','Short of Breath *'),
+      f('gi_last_bm','Last bowel movement *','date'),
+      f('gi_appetite','Appetite *'),
+      f('wound_statement','WOUND statement *','textarea'),
+      f('covid_symptoms_reported','Covid symptoms reported *','yesno'),
+      f('covid_symptoms_detail','Symptoms detail/actions','textarea'),
+
+      header('Home safety + Emergency preparedness + PHQ-2'),
+      f('home_safety_teaching','Home safety teaching (exact phrase) *','textarea'),
+      f('emerg_family','FAMILY *'),
+      f('emerg_with','with ___ *'),
+      f('emerg_special_needs','special needs of ___ *'),
+      f('phq2_interest','PHQ-2 interest answer *'),
+      f('phq2_depressed','PHQ-2 depressed answer *'),
+
+      header('HEP + MD/risks/goals'),
+      f('gait_balance_training','GAIT/BALANCE TRAINING','textarea'),
+      f('transfer_training','TRANSFER TRAINING','textarea'),
+      f('ther_ex','THER EX','textarea'),
+      f('hep_details','HEP details *','textarea'),
+      f('attending_md','Attending MD *'),
+      f('primary_dx_focus','Primary Dx / focus of care *'),
+      f('rehosp_risks','Re-hospitalization risks *','textarea'),
+      f('anticipated_needs_future','Anticipated needs/education future visits *','textarea'),
+      f('short_term_weeks','Short term goals weeks *'),
+      f('long_term_weeks','Long term goals weeks *'),
+      f('patient_identified_goal','Patient identified goal *','textarea'),
+
+      header('Clinical (quick)'),
+      f('history','HISTORY','textarea'),
+      f('rom','ROM','textarea'),
+      f('strength','STRENGTH','textarea'),
+      f('endurance_obj','ENDURANCE','textarea'),
+      f('sensation','SENSATION','textarea'),
+      f('transfers','TRANSFERS','textarea'),
+      f('gait','GAIT','textarea'),
+      f('tinetti','TINETTI','textarea'),
+      f('balance_static','BALANCE STATIC STANDING','textarea'),
+      f('disease_mgmt','DISEASE MGMT','textarea'),
+      f('special_instructions_precautions','SPECIAL INSTRUCTIONS/PRECAUTIONS','textarea'),
+    ],
+
+    InitialEval: [
+      header('Initial Eval'),
+      f('ie_subjective','SUBJECTIVE','textarea'),
+      f('ie_homebound','HOMEBOUND','textarea'),
+      f('ie_referred_by','REFERRED BY','textarea'),
+      f('ie_living','LIVING ARRANGEMENTS','textarea'),
+      f('ie_history','HISTORY','textarea'),
+      f('ie_plof','PRIOR LEVEL OF FUNCTION','textarea'),
+      f('ie_falls','FALL HISTORY','textarea'),
+      header('Objective'),
+      f('ie_rom','ROM','textarea'),
+      f('ie_strength','STRENGTH','textarea'),
+      f('ie_endurance','ENDURANCE','textarea'),
+      f('ie_sensation','SENSATION','textarea'),
+      f('ie_transfers','TRANSFERS','textarea'),
+      f('ie_gait','GAIT','textarea'),
+      f('ie_balance','BALANCE','textarea'),
+      f('ie_tinetti','TINETTI','textarea'),
+      header('Skilled'),
+      f('ie_vitals','VITALS','textarea'),
+      f('ie_disease_mgmt','DISEASE MGMT','textarea'),
+      f('ie_precautions','SPECIAL INSTRUCTIONS/PRECAUTIONS','textarea'),
+      f('ie_home_safety','HOME SAFETY','textarea'),
+      f('ie_phq2','PHQ-2','textarea'),
+      header('Interventions'),
+      f('ie_gait_training','GAIT/BALANCE TRAINING','textarea'),
+      f('ie_transfer_training','TRANSFER TRAINING','textarea'),
+      f('ie_therex','THER EX','textarea'),
+      header('Goals / Progress'),
+      f('ie_goals_progress','GOALS / PROGRESS','textarea'),
+    ]
+  };
+
+  function header(text){ return { type:'header', text }; }
+  function f(key, label, kind='text'){ return { type:'field', key, label, kind }; }
+
+  function currentVisitType(){
+    const v = state.visits.find(x => x.visit_id === state.activeVisit);
+    return v ? String(v.visit_type || 'SOC') : 'SOC';
+  }
+
+  function renderChecklistForm(type){
+    const schema = CHECKLIST_SCHEMAS[type] || CHECKLIST_SCHEMAS.SOC;
+    $('checklist_title').textContent = (type === 'SOC') ? 'SOC Checklist' : (type + ' Checklist');
+    const html = [];
+    for (const item of schema){
+      if (item.type === 'header'){
+        html.push(`<div class="pill" style="margin:10px 0 8px; color:var(--text);">${escapeHtml(item.text)}</div>`);
+        continue;
       }
-    };
-
-    $("#btn_signup").onclick = async () => {
-      try {
-        setMsg($("#auth_msg"), "Creating account…");
-        const email = $("#signup_email").value.trim();
-        const password = $("#signup_pass").value;
-        const data = await api("auth.signup", { email, password });
-
-        state.token = data.token;
-        localStorage.setItem(LS_TOKEN, state.token);
-
-        showApp();
-        await doBootstrap();
-        setView("visits");
-        setMsg($("#auth_msg"), "");
-      } catch (e) {
-        setMsg($("#auth_msg"), e.message, false);
+      const id = 'k_' + item.key;
+      if (item.kind === 'textarea'){
+        html.push(`<div class="socrow"><div class="full"><label>${escapeHtml(item.label)}</label><textarea id="${id}" rows="2"></textarea></div></div>`);
+      } else if (item.kind === 'yesno'){
+        html.push(`<div class="socrow"><div class="full"><label>${escapeHtml(item.label)}</label><select id="${id}"><option value=""></option><option value="YES">YES</option><option value="NO">NO</option></select></div></div>`);
+      } else if (item.kind === 'date'){
+        html.push(`<div class="socrow"><div class="full"><label>${escapeHtml(item.label)}</label><input id="${id}" type="date"/></div></div>`);
+      } else {
+        html.push(`<div class="socrow"><div class="full"><label>${escapeHtml(item.label)}</label><input id="${id}"/></div></div>`);
       }
-    };
+    }
+    $('soc_form').innerHTML = html.join('');
+    // attach autosave
+    qa('#soc_form input, #soc_form textarea, #soc_form select').forEach(el => el.addEventListener('input', scheduleAutosave));
+  }
 
-    // Nav
-    document.querySelectorAll(".navbtn").forEach((b) => {
-      b.onclick = () => setView(b.dataset.view);
+  function collectChecklist(type){
+    const schema = CHECKLIST_SCHEMAS[type] || CHECKLIST_SCHEMAS.SOC;
+    const out = {};
+    for (const item of schema){
+      if (item.type !== 'field') continue;
+      const el = $('k_' + item.key);
+      if (!el) continue;
+      out[item.key] = (el.value || '').trim();
+    }
+    return out;
+  }
+
+  function fillChecklist(type, data){
+    const schema = CHECKLIST_SCHEMAS[type] || CHECKLIST_SCHEMAS.SOC;
+    for (const item of schema){
+      if (item.type !== 'field') continue;
+      const el = $('k_' + item.key);
+      if (!el) continue;
+      el.value = (data && data[item.key] != null) ? String(data[item.key]) : '';
+    }
+  }
+
+  let autosaveTimer = null;
+  function scheduleAutosave(){
+    if (state.locked) return;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => saveChecklist(), 900);
+  }
+
+  async function loadChecklistAndRendered(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return;
+    const type = currentVisitType();
+    renderChecklistForm(type);
+
+    try{
+      const soc = await api('soc.get', { visit_id });
+      state.checklist = soc.soc || {};
+      state.locked = !!soc.locked;
+      fillChecklist(type, state.checklist);
+
+      const rn = await api('notes.getRendered', { visit_id });
+      $('rendered_note').textContent = rn.note_text || '';
+      state.locked = (rn.locked === 'Y') || state.locked;
+      applyLockState();
+    }catch(e){
+      $('doc_msg').textContent = e.message || String(e);
+    }
+  }
+
+  function applyLockState(){
+    const disabled = !!state.locked;
+    qa('#soc_form input, #soc_form textarea, #soc_form select').forEach(el => el.disabled = disabled);
+    $('btn_save').disabled = disabled;
+    $('btn_generate').disabled = disabled;
+    $('rec_upload').disabled = disabled ? true : $('rec_upload').disabled;
+    $('doc_msg').textContent = disabled ? 'Signed/locked: checklist is read-only.' : '';
+  }
+
+  async function saveChecklist(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return;
+    if (state.locked) return;
+
+    const type = currentVisitType();
+    const soc = collectChecklist(type);
+
+    try{
+      await api('soc.set', { visit_id, soc });
+      $('doc_msg').textContent = 'Saved.';
+    }catch(e){
+      $('doc_msg').textContent = e.message || String(e);
+    }
+  }
+
+  async function generateNote(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return alert('Open a visit first.');
+    if (state.locked) return alert('This visit is signed/locked.');
+    await saveChecklist();
+    try{
+      const out = await api('notes.render', { visit_id });
+      $('rendered_note').textContent = out.note_text || '';
+      $('doc_msg').textContent = 'Generated.';
+    }catch(e){
+      $('doc_msg').textContent = e.message || String(e);
+    }
+  }
+
+  async function signAndLock(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return alert('Open a visit first.');
+    if (!confirm('Sign & lock? No edits after this.')) return;
+    try{
+      await api('notes.sign', { visit_id });
+      state.locked = true;
+      applyLockState();
+      $('doc_msg').textContent = 'Signed & locked.';
+    }catch(e){
+      $('doc_msg').textContent = e.message || String(e);
+    }
+  }
+
+  /* ---------- Calendar ---------- */
+  async function loadCalendar(){
+    try{
+      const out = await api('calendar.list', { fromIso: $('cal_from').value.trim() || null, toIso: $('cal_to').value.trim() || null });
+      const rows = out.rows || [];
+      $('calendar_list').innerHTML = rows.map(r => `
+        <div class="item">
+          <div><b>${escapeHtml(r.start || '')}</b> — ${escapeHtml(r.patient_label || '')}</div>
+          <div class="muted">${escapeHtml(r.address || '(address hidden)')}</div>
+          <div class="muted">${escapeHtml(r.clinician_email || '')} | visit: ${escapeHtml(r.visit_id || '')}</div>
+        </div>
+      `).join('');
+    }catch(e){
+      $('calendar_list').innerHTML = `<div class="item"><b>Error</b><div class="muted">${escapeHtml(e.message || String(e))}</div></div>`;
+    }
+  }
+
+  /* ---------- Emergency ---------- */
+  async function triggerEmergency(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return alert('Open a visit first.');
+
+    const location = await getLocationString().catch(()=>'');
+    const type = prompt('Emergency type (fall, threat, medical):', 'Emergency') || 'Emergency';
+    const severity = prompt('Severity (Low/Medium/High/Critical):', 'High') || 'High';
+    const situation = prompt('Brief situation:', '') || '';
+
+    try{
+      const out = await api('emergency.trigger', { visit_id, type, severity, situation, location });
+      alert(`Emergency logged: ${out.incident_id}`);
+      // If they confirm, the phone dialer opens. The app stays open.
+      if (confirm('Call 911 now?')) window.location.href = 'tel:911';
+    }catch(e){
+      alert(e.message || String(e));
+    }
+  }
+
+  async function getLocationString(){
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) return resolve('');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`),
+        () => resolve(''),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
     });
-
-    // Buttons
-    $("#btn_logout").onclick = hardLogout;
-    $("#btn_refresh").onclick = refreshAll;
-    $("#btn_create_visit").onclick = createVisit;
-
-    $("#btn_load").onclick = loadSoc;
-    $("#btn_save").onclick = saveSoc;
-    $("#btn_generate").onclick = generateNote;
-    $("#btn_sign").onclick = signAndLock;
-
-    $("#btn_cal_load").onclick = loadCalendar;
-
-    $("#btn_save_patient").onclick = savePatient;
-    $("#btn_new_patient").onclick = newPatient;
-
-    $("#btn_admin_setpass").onclick = adminSetPass;
-
-    $("#btn_emergency").onclick = emergency;
-
-    // Restore session
-    const saved = localStorage.getItem(LS_TOKEN);
-    if (saved) {
-      state.token = saved;
-      try {
-        showApp();
-        await doBootstrap();
-        setView("visits");
-      } catch (e) {
-        // token invalid/expired -> force logout
-        hardLogout();
-        setMsg($("#auth_msg"), "Session expired. Please log in again.", false);
-      }
-    } else {
-      showAuth();
-    }
-
-    // Render SOC shell (empty initially)
-    renderSocForm($("#soc_form"));
-
-    // mobile helper
-    window.addEventListener("resize", onResize);
-    onResize();
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  /* ---------- Audio recording ---------- */
+  function pickMimeType(){
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+    for (const c of candidates) if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+    return '';
+  }
+  function blobToBase64(blob){
+    return new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(String(r.result).split(',')[1] || '');
+      r.readAsDataURL(blob);
+    });
+  }
+
+  async function startRecording(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return alert('Open a visit first.');
+    if (!navigator.mediaDevices?.getUserMedia) return alert('Mic not available in this browser.');
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = pickMimeType();
+    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+
+    state.rec = { mediaRecorder: mr, chunks: [], blob: null, startedAt: new Date().toISOString(), endedAt: null };
+
+    mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) state.rec.chunks.push(e.data); };
+    mr.onstop = () => {
+      state.rec.endedAt = new Date().toISOString();
+      state.rec.blob = new Blob(state.rec.chunks, { type: mr.mimeType || 'audio/webm' });
+      $('rec_playback').src = URL.createObjectURL(state.rec.blob);
+      $('rec_upload').disabled = state.locked;
+      $('rec_status').textContent = `Recorded ${Math.round(state.rec.blob.size/1024)} KB`;
+      stream.getTracks().forEach(t => t.stop());
+    };
+
+    mr.start();
+    $('rec_start').disabled = true;
+    $('rec_stop').disabled = false;
+    $('rec_status').textContent = 'Recording...';
+  }
+
+  function stopRecording(){
+    const mr = state.rec.mediaRecorder;
+    if (!mr) return;
+    mr.stop();
+    $('rec_start').disabled = false;
+    $('rec_stop').disabled = true;
+  }
+
+  async function uploadRecording(){
+    const visit_id = $('active_visit').value.trim();
+    if (!visit_id) return alert('Open a visit first.');
+    if (state.locked) return alert('This visit is signed/locked.');
+    if (!state.rec.blob) return alert('No recording available.');
+
+    $('rec_status').textContent = 'Encoding...';
+    const base64 = await blobToBase64(state.rec.blob);
+
+    $('rec_status').textContent = 'Uploading...';
+    const retention_days = parseInt(($('rec_retention').value || '30'), 10);
+
+    try{
+      const out = await api('recordings.upload', {
+        visit_id,
+        filename: `rec_${visit_id}_${Date.now()}.webm`,
+        mimeType: state.rec.blob.type || 'audio/webm',
+        base64,
+        started_at: state.rec.startedAt,
+        ended_at: state.rec.endedAt,
+        retention_days
+      });
+      $('rec_status').innerHTML = `Uploaded. (Saved to Drive)`;
+      $('rec_upload').disabled = true;
+    }catch(e){
+      $('rec_status').textContent = e.message || String(e);
+    }
+  }
+
+  /* ---------- Admin ---------- */
+  async function adminSetPassword(){
+    try{
+      const email = $('admin_user_email').value.trim();
+      const newPassword = $('admin_user_pass').value;
+      const out = await api('auth.setPassword', { email, newPassword });
+      $('admin_msg').textContent = 'Password set.';
+    }catch(e){
+      $('admin_msg').textContent = e.message || String(e);
+    }
+  }
+
+  async function adminSetRole(){
+    try{
+      const email = $('admin_user_email').value.trim();
+      const role = $('admin_user_role').value;
+      const out = await api('auth.setRole', { email, role });
+      $('admin_msg').textContent = 'Role updated.';
+    }catch(e){
+      $('admin_msg').textContent = e.message || String(e);
+    }
+  }
+
+  async function adminLookupPatient(){
+    try{
+      const term = prompt('Enter patient id or last name:','') || '';
+      const out = await api('admin.lookupPatient', { term });
+      $('admin_output').textContent = JSON.stringify(out.result || {}, null, 2);
+      $('admin_msg').textContent = '';
+    }catch(e){
+      $('admin_msg').textContent = e.message || String(e);
+    }
+  }
+
+  /* ---------- Events ---------- */
+  function bind(){
+    $('tab_login').addEventListener('click', () => setTabs('login'));
+    $('tab_signup').addEventListener('click', () => setTabs('signup'));
+    $('btn_signup').addEventListener('click', signup);
+    $('btn_login').addEventListener('click', login);
+    $('btn_logout').addEventListener('click', logout);
+
+    $('btn_refresh').addEventListener('click', bootstrap);
+    $('btn_create_visit').addEventListener('click', createVisit);
+    $('btn_load').addEventListener('click', loadChecklistAndRendered);
+    $('btn_save').addEventListener('click', saveChecklist);
+    $('btn_generate').addEventListener('click', generateNote);
+    $('btn_sign').addEventListener('click', signAndLock);
+
+    $('btn_cal_load').addEventListener('click', loadCalendar);
+
+    $('btn_emergency').addEventListener('click', triggerEmergency);
+
+    $('rec_start').addEventListener('click', startRecording);
+    $('rec_stop').addEventListener('click', stopRecording);
+    $('rec_upload').addEventListener('click', uploadRecording);
+
+    $('patient_select').addEventListener('change', () => {
+      const p = state.patients.find(x => x.patient_id === $('patient_select').value) || null;
+      fillPatientForm(p);
+    });
+    $('btn_new_patient').addEventListener('click', () => { $('patient_select').value=''; fillPatientForm(null); });
+    $('btn_save_patient').addEventListener('click', savePatient);
+
+    $('btn_admin_setpass').addEventListener('click', adminSetPassword);
+    $('btn_admin_setrole').addEventListener('click', adminSetRole);
+    $('btn_admin_lookup_patient').addEventListener('click', adminLookupPatient);
+
+    qa('.navbtn').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+    $('btn_menu').addEventListener('click', toggleSidebar);
+
+    // close sidebar if clicking outside on mobile
+    document.addEventListener('click', (e) => {
+      const sb = $('sidebar');
+      if (!sb.classList.contains('open')) return;
+      const inside = sb.contains(e.target) || $('btn_menu').contains(e.target);
+      if (!inside) closeSidebar();
+    });
+  }
+
+  /* ---------- Start ---------- */
+  bind();
+  setTabs('login');
+
+  if (state.token){
+    bootstrap().catch(() => showAuth('Session expired. Please login again.'));
+  } else {
+    showAuth('');
+  }
 })();
