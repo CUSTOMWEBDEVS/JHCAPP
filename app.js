@@ -1,5 +1,5 @@
 /**************** CONFIG ****************/
-const GAS_URL = "PASTE_YOUR_GAS_EXEC_URL_HERE";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyB4RXdMj1nRt9ziKzCZTE5YXxyWLBhnRva9MKjzPXFyYjYqr-bxhkwYrmha9gMn_ca/exec";
 
 /**************** STATE ****************/
 const state = {
@@ -487,3 +487,4 @@ function escJs(s){
 
 /**************** START ****************/
 boot();
+
