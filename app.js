@@ -90,11 +90,80 @@ async function authLogin(){
 function logout(){
   state.token = "";
   state.me = null;
+  state.patients = [];
+  state.visits = [];
+  state.selectedPatient = null;
+
   localStorage.removeItem("hh_token");
+
+  // wipe UI so nothing is visible after logout
+  clearAppUI();
+
+  // show auth, hide app
   $("view_app").style.display = "none";
   $("view_auth").style.display = "grid";
   $("loading").style.display = "none";
+
   toast("Logged out");
+
+  setVal("login_email","");
+setVal("login_password","");
+setVal("signup_email","");
+setVal("signup_password","");
+$("login_msg").textContent = "";
+$("signup_msg").textContent = "";
+
+}
+
+function clearAppUI(){
+  // header / identity
+  if ($("me_email")) $("me_email").textContent = "";
+  if ($("me_role")) $("me_role").textContent = "";
+  if ($("nav_admin")) $("nav_admin").style.display = "none";
+
+  // patients
+  if ($("patient_select")) $("patient_select").innerHTML = `<option value="">Select…</option>`;
+  if ($("patient_detail")) $("patient_detail").textContent = "";
+  setVal("p_first","");
+  setVal("p_last","");
+  setVal("p_dob","");
+  setVal("p_phone","");
+  setVal("p_address","");
+  setVal("p_notes","");
+  if ($("patient_save_msg")) $("patient_save_msg").textContent = "";
+
+  // visits
+  setVal("visit_type","SOC");
+  setVal("v_start","");
+  setVal("v_end","");
+  if ($("visit_create_msg")) $("visit_create_msg").textContent = "";
+  setVal("active_visit_id","");
+  if ($("visits_list")) $("visits_list").innerHTML = "";
+
+  // doc
+  [
+    "f_subjective","f_homebound","f_referred_by","f_living","f_history","f_plof","f_falls",
+    "f_steps","f_emergency_plan","f_rom","f_strength","f_endurance","f_sensation","f_transfers",
+    "f_gait","f_balance","f_tinetti","f_vitals","f_disease_mgmt","f_precautions","f_home_safety",
+    "f_phq2","f_gait_training","f_transfer_training","f_therex","f_assessment","f_goal_progress"
+  ].forEach(id => setVal(id,""));
+
+  if ($("rendered_note")) $("rendered_note").textContent = "";
+  if ($("doc_msg")) $("doc_msg").textContent = "";
+
+  // calendar + admin
+  setVal("cal_from","");
+  setVal("cal_to","");
+  if ($("calendar_list")) $("calendar_list").innerHTML = "";
+  setVal("admin_user_email","");
+  setVal("admin_user_role","clinician");
+  setVal("admin_user_active","N");
+  setVal("admin_patient_q","");
+  if ($("admin_users_list")) $("admin_users_list").innerHTML = "";
+  if ($("admin_patients_list")) $("admin_patients_list").innerHTML = "";
+
+  // status
+  setStatus("Idle");
 }
 
 /**************** BOOT ****************/
