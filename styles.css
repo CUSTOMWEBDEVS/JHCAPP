@@ -359,9 +359,96 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
   .h1{font-size:18px}
 }
 
-@media (max-width: 480px){
-  .auth-card{padding:16px}
-  input,select,textarea{border-radius:12px}
-  .btn{border-radius:12px; padding:10px 12px}
-  .pill{font-size:11px}
+@media (max-width: 1024px), (pointer: coarse) {
+
+  html, body { height: auto !important; }
+  body { overflow: auto !important; }
+
+  /* stop “desktop fixed app” behavior on phones */
+  .app{
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow: visible !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  /* sidebar becomes a full-width top panel */
+  .sidebar{
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    overflow: visible !important;
+  }
+
+  .brand{ margin: 0 !important; padding: 6px 6px !important; }
+  .userbox{ padding: 0 !important; }
+
+  /* nav becomes horizontal chips */
+  .nav{
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    margin: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px !important;
+  }
+  .navbtn{
+    white-space: nowrap !important;
+    text-align: center !important;
+    padding: 10px 12px !important;
+    border-radius: 999px !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* main becomes normal scrolling content */
+  .main{
+    width: 100% !important;
+    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* topbar stacks nicely */
+  .topbar{
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .top-actions{
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+  }
+
+  /* kill 2-column layouts */
+  .grid2{ grid-template-columns: 1fr !important; }
+  .grid2.tight{ grid-template-columns: 1fr !important; }
+  .formgrid{ grid-template-columns: 1fr !important; }
+
+  /* remove hard height caps that make mobile feel broken */
+  .list{ max-height: none !important; }
+  .socbox{ max-height: none !important; }
+  .note{ max-height: none !important; }
+
+  /* make touch targets bigger */
+  input, select, textarea { padding: 12px 12px !important; }
+  .btn{ padding: 12px 14px !important; }
+
+  /* fix dropdown options visibility on iOS/Windows dark theme */
+  select, option{
+    color: var(--text) !important;
+    background-color: #0b1020 !important;
+  }
 }
