@@ -1,5 +1,5 @@
 /**************** CONFIG ****************/
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxg5i_x1rnU2CI6eYNimH43vnygqHsjhvaR2UM1AI03f2s2MVTdvNn-p8yBPM1XVGSP/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzNzDV5N39K_PyLMDDhhqUYx_RrHmAw3sQA5MhVtAPYPVMzF7-HZCG9bjscV0Z3EeS7/exec";
 
 /**************** STATE ****************/
 const state = {
@@ -13,8 +13,6 @@ const state = {
   adminPatientTimer: null,
 };
 
-
-/**************** HELPERS ****************/
 const $ = (id) => document.getElementById(id);
 const val = (id) => String($(id)?.value || "").trim();
 const setVal = (id, v) => { if ($(id)) $(id).value = v ?? ""; };
@@ -35,7 +33,6 @@ async function api(action, data = {}) {
   setStatus("Working…");
   const body = JSON.stringify({ action, data, token: state.token });
 
-  // Use text/plain to reduce CORS preflight headaches in some setups
   const res = await fetch(GAS_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -96,59 +93,89 @@ function logout(){
   localStorage.removeItem("hh_token");
   $("view_app").style.display = "none";
   $("view_auth").style.display = "grid";
+  $("loading").style.display = "none";
   toast("Logged out");
 }
 
 /**************** BOOT ****************/
 async function boot(){
+  const loading = $("loading");
+
   if (!state.token) {
     $("view_auth").style.display = "grid";
     $("view_app").style.display = "none";
+    if (loading) loading.style.display = "none";
     return;
   }
 
   try {
-    state.me = await api("me", {});
+    if (loading) loading.style.display = "grid";
+
+    // single call: bootstrap -> me + patients + visits
+    await reloadAll();
+
+    $("view_auth").style.display = "none";
+    $("view_app").style.display = "grid";
+
+    wireAutosave();
+    showTab("patients");
+
   } catch (e) {
     logout();
-    return;
+  } finally {
+    if (loading) loading.style.display = "none";
   }
+}
 
+/**************** FAST RELOAD (BOOTSTRAP) ****************/
+async function reloadAll(){
+  const boot = await api("bootstrap", { limit: 50 });
+
+  state.me = boot.me;
   $("me_email").textContent = state.me.email;
   $("me_role").textContent = state.me.role;
 
-  // gate admin tab
   const isPriv = ["admin","supervisor"].includes(state.me.role);
   $("nav_admin").style.display = isPriv ? "block" : "none";
 
-  $("view_auth").style.display = "none";
-  $("view_app").style.display = "grid";
+  state.patients = boot.patients || [];
+  $("patient_select").innerHTML =
+    `<option value="">Select…</option>` +
+    state.patients.map(p => `<option value="${p.patient_id}">${esc(p.last)}, ${esc(p.first)} (${p.patient_id})</option>`).join("");
 
-  wireAutosave();
-  await reloadAll();
-}
+  state.visits = boot.visits || [];
+  $("visits_list").innerHTML = state.visits.map(v => `
+    <div class="item">
+      <div>
+        <div class="t">${esc(v.visit_type)} <span class="badge">${esc(v.status)}</span></div>
+        <div class="m"><b>${esc(v.visit_id)}</b> • patient ${esc(v.patient_id)} • ${esc(v.scheduled_start || "")}</div>
+      </div>
+      <div class="row" style="flex:0 0 auto">
+        <button class="btn good" onclick="useVisit('${v.visit_id}')">Open</button>
+      </div>
+    </div>
+  `).join("");
 
-async function reloadAll(){
-  await loadPatients();
-  await loadVisits();
+  toast(`Loaded ${state.patients.length} patients • ${state.visits.length} visits`);
 }
 
 /**************** PATIENTS ****************/
-async function loadPatients(){
-  const patients = await api("listPatients", {});
-  state.patients = patients;
-
-  $("patient_select").innerHTML =
-    `<option value="">Select…</option>` +
-    patients.map(p => `<option value="${p.patient_id}">${esc(p.last)}, ${esc(p.first)} (${p.patient_id})</option>`).join("");
-
-  toast(`Loaded ${patients.length} patients`);
+function newPatient(){
+  state.selectedPatient = null;
+  $("patient_select").value = "";
+  $("patient_detail").textContent = "New patient";
+  setVal("p_first","");
+  setVal("p_last","");
+  setVal("p_dob","");
+  setVal("p_phone","");
+  setVal("p_address","");
+  setVal("p_notes","");
+  $("patient_save_msg").textContent = "";
 }
 
 function selectPatient(pid){
   state.selectedPatient = state.patients.find(p => p.patient_id === pid) || null;
   const p = state.selectedPatient;
-
   $("patient_detail").textContent = p ? `${p.first} ${p.last} • ${p.address || ""}` : "";
   if (p){
     setVal("p_first", p.first);
@@ -171,34 +198,22 @@ async function savePatient(){
     notes: val("p_notes"),
     active: "Y"
   };
+
+  if (!payload.first || !payload.last) {
+    toast("First + Last required");
+    return;
+  }
+
   const res = await api("upsertPatient", payload);
   $("patient_save_msg").textContent = `Saved ${res.patient_id}`;
   toast(`Patient saved: ${res.patient_id}`);
-  await loadPatients();
+
+  await reloadAll();
   $("patient_select").value = res.patient_id;
   selectPatient(res.patient_id);
 }
 
 /**************** VISITS ****************/
-async function loadVisits(){
-  const visits = await api("listVisits", { limit: 50 });
-  state.visits = visits;
-
-  $("visits_list").innerHTML = visits.map(v => `
-    <div class="item">
-      <div>
-        <div class="t">${esc(v.visit_type)} <span class="badge">${esc(v.status)}</span></div>
-        <div class="m"><b>${esc(v.visit_id)}</b> • patient ${esc(v.patient_id)} • ${esc(v.scheduled_start || "")}</div>
-      </div>
-      <div class="row" style="flex:0 0 auto">
-        <button class="btn good" onclick="useVisit('${v.visit_id}')">Open</button>
-      </div>
-    </div>
-  `).join("");
-
-  toast(`Loaded ${visits.length} visits`);
-}
-
 async function createVisit(){
   const pid = val("patient_select");
   if (!pid) return toast("Pick a patient first");
@@ -214,7 +229,7 @@ async function createVisit(){
   setVal("active_visit_id", res.visit_id);
   toast(`Visit created: ${res.visit_id}`);
 
-  await loadVisits();
+  await reloadAll();
   await loadVisitFields();
   await loadRendered();
   showTab("doc");
@@ -468,7 +483,6 @@ async function adminSearchPatients(){
 }
 
 function adminOpenPatient(pid){
-  // Switch to Patients tab, select it
   showTab("patients");
   $("patient_select").value = pid;
   selectPatient(pid);

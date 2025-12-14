@@ -45,6 +45,8 @@
           Sign-ups may require supervisor activation depending on your settings.
         </div>
       </div>
+    </div>
+  </section>
 
   <!-- MAIN APP -->
   <section id="view_app" class="app" style="display:none">
@@ -97,8 +99,9 @@
               <div class="sub">Create or update patient demographics</div>
             </div>
             <div class="row">
+              <button class="btn" onclick="newPatient()">New</button>
               <button class="btn primary" onclick="savePatient()">Save</button>
-              <button class="btn" onclick="loadPatients()">Reload</button>
+              <button class="btn" onclick="reloadAll()">Reload</button>
             </div>
           </div>
           <div class="bd split">
@@ -141,7 +144,7 @@
             </div>
             <div class="row">
               <button class="btn primary" onclick="createVisit()">Create Visit</button>
-              <button class="btn" onclick="loadVisits()">Reload</button>
+              <button class="btn" onclick="reloadAll()">Reload</button>
             </div>
           </div>
           <div class="bd">
@@ -283,7 +286,7 @@
           </div>
           <div class="bd">
             <div class="warn">
-              This logs an incident to Sheets. Add your organization’s policy + consent process before any real deployment.
+              This logs an incident to Sheets. Add your organization’s policy + consent process before real deployment.
             </div>
           </div>
         </section>
@@ -357,8 +360,19 @@
     </main>
   </section>
 
+  <!-- LOADING OVERLAY -->
+  <div id="loading" class="loading" style="display:none">
+    <div class="loadingCard">
+      <div class="spinner"></div>
+      <div>
+        <div class="h2">Loading your workspace…</div>
+        <div class="sub">Syncing patients, visits, and permissions</div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
