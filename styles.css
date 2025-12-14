@@ -18,6 +18,7 @@
 
 *{box-sizing:border-box}
 html,body{height:100%}
+
 body{
   margin:0;
   font-family:var(--font);
@@ -38,6 +39,7 @@ body{
 
 .hidden{display:none !important}
 
+/* AUTH */
 .overlay{
   position:fixed; inset:0;
   display:flex;
@@ -75,6 +77,8 @@ body{
 }
 .tab.active{background:rgba(106,92,255,.18); border-color:rgba(106,92,255,.45)}
 .panel label{display:block; margin:10px 0 6px; font-size:12px; color:var(--muted)}
+
+/* FORM CONTROLS */
 input,select,textarea{
   width:100%;
   padding:10px 12px;
@@ -84,6 +88,13 @@ input,select,textarea{
   color:var(--text);
   outline:none;
 }
+
+/* Fix: dropdown options invisible until hover (common on Windows + dark themes) */
+select, option{
+  color: var(--text);
+  background-color: #0b1020;
+}
+
 textarea{resize:vertical}
 input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-shadow:0 0 0 3px rgba(106,92,255,.16)}
 .msg{margin-top:12px;color:var(--muted);font-size:13px;min-height:18px}
@@ -98,6 +109,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   border-radius:14px;
   cursor:pointer;
   transition:.15s ease;
+  touch-action: manipulation;
 }
 .btn:hover{transform:translateY(-1px); background:rgba(255,255,255,.08)}
 .btn:disabled{opacity:.5; cursor:not-allowed; transform:none}
@@ -115,6 +127,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
 }
 .btn.full{width:100%}
 
+/* APP LAYOUT */
 .app{
   position:fixed; inset:0;
   display:flex;
@@ -135,6 +148,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   flex-direction:column;
   overflow:hidden;
 }
+
 .brand{display:flex;gap:12px;align-items:center;padding:10px 8px;margin-bottom:10px}
 .brand-logo{
   width:42px;height:42px;border-radius:14px;
@@ -142,6 +156,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
 }
 .brand-name{font-weight:900;letter-spacing:.6px}
 .brand-sub{font-size:12px;color:var(--muted)}
+
 .userbox{display:flex;gap:8px;flex-wrap:wrap;padding:6px 6px 10px}
 .pill{
   display:inline-flex;
@@ -152,6 +167,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   font-size:12px;
   color:var(--muted);
 }
+
 .nav{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 .navbtn{
   border:1px solid var(--stroke);
@@ -172,6 +188,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   flex-direction:column;
   gap:14px;
 }
+
 .topbar{
   display:flex;
   justify-content:space-between;
@@ -186,7 +203,7 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
 }
 .h1{font-size:20px;font-weight:900}
 .sub{font-size:13px;color:var(--muted)}
-.top-actions{display:flex;gap:10px;align-items:center}
+.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 .view{flex:1; overflow:auto; padding:2px}
 .card{
@@ -197,7 +214,16 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   backdrop-filter: blur(14px);
   padding:16px;
 }
-.cardhead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:10px}
+
+.cardhead{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+  margin-bottom:10px;
+  flex-wrap:wrap;
+}
+
 .cardtitle{font-size:16px;font-weight:900}
 .cardtitle.sm{font-size:13px}
 .cardsub{font-size:12px;color:var(--muted)}
@@ -208,13 +234,16 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   grid-template-columns: 520px 1fr;
   gap:14px;
 }
-@media (max-width: 1200px){
-  body{overflow:auto}
-  .app{position:relative; height:auto; overflow:auto}
-  .grid2{grid-template-columns:1fr}
+
+.list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  max-height:360px;
+  overflow:auto;
+  padding-right:6px
 }
 
-.list{display:flex;flex-direction:column;gap:10px;max-height:360px;overflow:auto;padding-right:6px}
 .item{
   border:1px solid var(--stroke);
   background:rgba(255,255,255,.04);
@@ -223,7 +252,8 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
 }
 .item b{font-weight:900}
 .item .muted{font-size:12px;color:var(--muted); margin-top:4px}
-.item .row{display:flex;gap:10px;margin-top:10px;align-items:center}
+.item .row{display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap}
+
 .divider{height:1px;background:rgba(255,255,255,.10); margin:14px 0}
 
 .formgrid{
@@ -232,12 +262,9 @@ input:focus,select:focus,textarea:focus{border-color:rgba(106,92,255,.65); box-s
   gap:12px;
 }
 .formgrid .colspan{grid-column: 1 / -1}
-.formgrid .rowend{display:flex; gap:10px; align-items:end; justify-content:flex-end}
+.formgrid .rowend{display:flex; gap:10px; align-items:end; justify-content:flex-end; flex-wrap:wrap}
 .formgrid.tight{grid-template-columns: 1fr}
 .grid2.tight{grid-template-columns: 1fr 1fr}
-@media (max-width: 1200px){
-  .grid2.tight{grid-template-columns:1fr}
-}
 label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
 
 .socbox{
@@ -255,6 +282,7 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
   margin-bottom:10px;
 }
 .socrow .full{grid-column: 1 / -1}
+
 .note{
   border:1px solid var(--stroke);
   background:rgba(0,0,0,.32);
@@ -265,4 +293,75 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 6px}
   white-space:pre-wrap;
   line-height:1.25;
 }
+
 .recrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ---------------------------
+   MOBILE FRIENDLY BREAKPOINTS
+   --------------------------- */
+@media (max-width: 980px){
+  body{overflow:auto}
+  .app{
+    position:relative;
+    inset:auto;
+    height:auto;
+    padding:12px;
+    gap:12px;
+    flex-direction:column;
+  }
+
+  /* Sidebar becomes topbar panel */
+  .sidebar{
+    width:auto;
+    flex-direction:row;
+    align-items:center;
+    gap:10px;
+    padding:10px;
+  }
+  .brand{margin:0; padding:6px 6px}
+  .userbox{padding:0; margin-left:auto}
+  .spacer{display:none}
+
+  /* Nav buttons horizontal */
+  .nav{
+    flex-direction:row;
+    gap:8px;
+    margin:0;
+    overflow:auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .navbtn{
+    white-space:nowrap;
+    text-align:center;
+    padding:10px 12px;
+    border-radius:999px;
+  }
+
+  /* Main scroll naturally */
+  .main{overflow:visible}
+
+  /* Grids become single column */
+  .grid2{grid-template-columns:1fr}
+  .grid2.tight{grid-template-columns:1fr}
+
+  /* Forms become single column */
+  .formgrid{grid-template-columns:1fr}
+
+  /* Lists not hard capped */
+  .list{max-height:none}
+
+  /* SOC boxes allow more height on mobile */
+  .socbox, .note{max-height:none}
+
+  /* Reduce card padding slightly */
+  .card{padding:14px}
+  .topbar{padding:14px}
+  .h1{font-size:18px}
+}
+
+@media (max-width: 480px){
+  .auth-card{padding:16px}
+  input,select,textarea{border-radius:12px}
+  .btn{border-radius:12px; padding:10px 12px}
+  .pill{font-size:11px}
+}
